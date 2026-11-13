@@ -26,7 +26,8 @@ resource "docker_container" "app" {
     "QBITTORRENT_PASSWORD_FILE=/run/secrets/qbittorrent-password",
     "SWARMTENDERR_PASSWORD_FILE=/run/secrets/dashboard-password",
     "SWARMTENDERR_CONTROLS=${var.controls_enabled}",
-  ], var.postgres_url_file != "" ? ["SWARMTENDERR_DATABASE_URL_FILE=/run/secrets/database-url"] : [])
+    ], var.postgres_url_file != "" ? ["SWARMTENDERR_DATABASE_URL_FILE=/run/secrets/database-url"] : [],
+  var.postgres_ca_file != "" ? ["PGSSLROOTCERT=/run/certs/postgres-ca.pem", "PGSSLMODE=verify-full"] : [])
 
   capabilities {
     drop = ["ALL"]
@@ -62,6 +63,14 @@ resource "docker_container" "app" {
     for_each = var.network_name != "" ? [var.network_name] : []
     content {
       name = networks_advanced.value
+    }
+  }
+  dynamic "volumes" {
+    for_each = var.postgres_ca_file != "" ? [var.postgres_ca_file] : []
+    content {
+      host_path      = volumes.value
+      container_path = "/run/certs/postgres-ca.pem"
+      read_only      = true
     }
   }
   tmpfs = { "/tmp" = "rw,nosuid,nodev,size=64m,mode=1777" }

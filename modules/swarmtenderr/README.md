@@ -17,6 +17,7 @@ module "swarmtenderr" {
   qbittorrent_password_file = "/etc/swarmtenderr/qbittorrent-password"
   # Optional: omit for SQLite.
   # postgres_url_file = "/etc/swarmtenderr/postgresql-url"
+  # postgres_ca_file  = "/etc/ssl/certs/lab-public-root.pem"
 }
 ```
 
@@ -25,6 +26,9 @@ tags are deliberately rejected. Pre-create the credential files on the Docker
 host with access for container UID 10001, and configure PostgreSQL independently
 when selected. A file path is not a secret; file contents never enter Terraform
 state. Do not replace these inputs with `file()` calls or inline credentials.
+For a private database CA, `postgres_ca_file` mounts its public certificate and
+sets libpq's `PGSSLROOTCERT` and `PGSSLMODE=verify-full` defaults. Keep equivalent
+verification in the connection URL if it explicitly overrides libpq defaults.
 
 The published port defaults to `127.0.0.1:8787`. Put your normal TLS/auth boundary
 in front for LAN access. `public_url` must be the exact browser origin.

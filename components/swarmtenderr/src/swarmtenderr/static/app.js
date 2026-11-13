@@ -9,8 +9,8 @@ const bytes = (n) => { if (!Number.isFinite(n) || n < 0) return '—'; const uni
 const duration = (n) => n == null ? 'Unknown' : n < 60 ? '< 1 min' : n < 3600 ? `${Math.ceil(n/60)} min` : n < 86400 ? `${(n/3600).toFixed(1)} hr` : `${(n/86400).toFixed(1)} days`;
 const date = (n) => n ? new Date(n * 1000).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : 'Unknown';
 function element(tag, text, className) {const node = document.createElement(tag); if(text != null) node.textContent = text; if(className) node.className = className; return node;}
-function status(row) {if(row.progress >= 1) return ['Seeding','seeding']; if(row.state === 'downloading') return ['Downloading','downloading']; if(row.state === 'metaDL') return ['Metadata','metadata']; if(row.state.includes('paused') || row.state.includes('stopped')) return ['Paused','waiting']; if(row.state === 'stalledDL') return ['Stalled','waiting']; return [row.state === 'queuedDL' ? 'Queued' : row.state,'waiting'];}
-function matches(row) {if(filter==='all') return true; if(filter==='downloading') return row.progress<1 && row.download_speed>0; if(filter==='seeding') return row.progress>=1; return row.progress<1 && row.download_speed===0;}
+function status(row) {if(row.progress >= 1) return ['uploading','stalledUP','forcedUP'].includes(row.state)?['Seeding','seeding']:['Complete','waiting']; if(row.state === 'downloading') return ['Downloading','downloading']; if(row.state === 'metaDL') return ['Metadata','metadata']; if(row.state.includes('paused') || row.state.includes('stopped')) return ['Paused','waiting']; if(row.state === 'stalledDL') return ['Stalled','waiting']; return [row.state === 'queuedDL' ? 'Queued' : row.state,'waiting'];}
+function matches(row) {if(filter==='all') return true; if(filter==='downloading') return row.progress<1 && row.download_speed>0; if(filter==='seeding') return row.progress>=1&&['uploading','stalledUP','forcedUP'].includes(row.state); return row.progress<1 && row.download_speed===0;}
 async function api(path, options) {const response = await fetch(path, {cache:'no-store', ...options}); const value = await response.json(); if(!response.ok) throw new Error(value.error || `Request failed (${response.status})`); return value;}
 function notice(message) {$('notice').hidden = !message; $('notice').textContent = message;}
 async function refresh() {if(busy) return; busy=true; $('refresh').disabled=true; try {const [result, activity] = await Promise.all([api('/api/v1/status'),api('/api/v1/activity')]); data=result; history=activity; render();} catch(error) {notice(error.message); $('connection').textContent='Connection unavailable';} finally {busy=false; $('refresh').disabled=false;}}
@@ -24,7 +24,7 @@ function render() {
   $('download').textContent=bytes(snapshot.download_speed)+'/s'; $('pulse-speed').textContent=bytes(snapshot.download_speed)+'/s';
   $('active').textContent=rows.filter(r=>r.progress<1 && r.download_speed>0).length;
   $('queued').textContent=rows.filter(r=>r.state==='queuedDL').length;
-  $('seeding').textContent=rows.filter(r=>r.progress>=1).length;
+  $('seeding').textContent=rows.filter(r=>r.progress>=1&&['uploading','stalledUP','forcedUP'].includes(r.state)).length;
   $('upload').textContent=bytes(snapshot.upload_speed)+'/s shared with the swarm';
   $('nav-count').textContent=rows.length; $('table-count').textContent=rows.length;
   $('updated').textContent='Observed '+date(snapshot.observed_at);

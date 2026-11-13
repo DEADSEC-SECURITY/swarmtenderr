@@ -76,6 +76,16 @@ variable "controls_enabled" {
   description = "Enable manual queue controls. External optimizer mode always disables them."
 }
 
+variable "postgres_ca_file" {
+  type        = string
+  default     = ""
+  description = "Optional public CA certificate path on the Docker host for verified private PostgreSQL TLS."
+  validation {
+    condition     = var.postgres_ca_file == "" || startswith(var.postgres_ca_file, "/")
+    error_message = "Use an absolute public certificate file path."
+  }
+}
+
 variable "bind_address" {
   type        = string
   default     = "127.0.0.1"
