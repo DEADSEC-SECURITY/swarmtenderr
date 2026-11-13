@@ -1,0 +1,96 @@
+name: Swarmtenderr CI and Docker Hub release
+
+on:
+  pull_request:
+    paths: [components/swarmtenderr/**, modules/swarmtenderr/**, .github/workflows/swarmtenderr.yml]
+  push:
+    branches: [main]
+    tags: [swarmtenderr-v*]
+    paths: [components/swarmtenderr/**, modules/swarmtenderr/**, .github/workflows/swarmtenderr.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swarmtenderr-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.13'
+      - name: Check JavaScript syntax
+        run: node --check components/swarmtenderr/src/swarmtenderr/static/app.js
+      - name: Validate the API contract
+        run: python -m json.tool components/swarmtenderr/config/openapi.json > /dev/null
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the candidate image
+        run: docker buildx build --platform linux/${{ matrix.architecture }} --load --tag swarmtenderr-ci components/swarmtenderr
+      - name: Test the installed image, isolated qBittorrent, SQLite and PostgreSQL
+        run: python -B components/swarmtenderr/tests/test_container_acceptance.py swarmtenderr-ci
+      - name: Check Terraform formatting and plan contracts with mocked Docker
+        run: |
+          docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 fmt -check -recursive
+          docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 init -backend=false -input=false -lockfile=readonly
+          docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 validate
+          docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 test
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/swarmtenderr-v')
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify the release tag matches the package
+        id: version
+        run: |
+          python3 - <<'PY'
+          import os, re, tomllib
+          version = tomllib.load(open('components/swarmtenderr/pyproject.toml', 'rb'))['project']['version']
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version)
+          assert os.environ['GITHUB_REF_NAME'] == 'swarmtenderr-v' + version
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('value=' + version + '\n')
+          PY
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: elgon2003
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish the verified source for amd64 and arm64
+        id: image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: components/swarmtenderr
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            elgon2003/swarmtenderr:${{ steps.version.outputs.value }}
+            elgon2003/swarmtenderr:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+          provenance: mode=max
+          sbom: true
+      - name: Record the immutable pull reference
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: printf 'Pull and deploy `elgon2003/swarmtenderr@%s`\n' "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"

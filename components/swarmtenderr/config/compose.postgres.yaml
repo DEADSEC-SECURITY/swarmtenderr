@@ -1,0 +1,10 @@
+# Use with compose.yaml. Provision and back up the external database separately.
+services:
+  swarmtenderr:
+    environment:
+      SWARMTENDERR_DATABASE_URL_FILE: /run/secrets/database-url
+    secrets:
+      - database-url
+secrets:
+  database-url:
+    file: ${SWARMTENDERR_DATABASE_URL_PATH:?Set a file containing the PostgreSQL connection URL}

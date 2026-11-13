@@ -1,0 +1,160 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Swarmtenderr API",
+    "version": "0.1.0",
+    "description": "Read-only monitoring and explicitly enabled, authenticated single-torrent controls. qBittorrent 5 required."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8787"
+    }
+  ],
+  "security": [
+    {
+      "dashboardAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "dashboardAuth": {
+        "type": "http",
+        "scheme": "basic"
+      }
+    },
+    "schemas": {
+      "Action": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "pause",
+              "resume",
+              "prioritize",
+              "reannounce"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "security": [],
+        "summary": "Process liveness, independent of upstream freshness",
+        "responses": {
+          "200": {
+            "description": "Process running"
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "summary": "Last successful sanitized observation, staleness, database kind and package version",
+        "responses": {
+          "200": {
+            "description": "Snapshot may be null before first observation; stale data is explicitly marked"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "503": {
+            "description": "Database unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/activity": {
+      "get": {
+        "summary": "Latest 100 action records and 60 observed aggregate rate samples",
+        "responses": {
+          "200": {
+            "description": "Persistent activity and samples"
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/{hash}/actions": {
+      "post": {
+        "summary": "Request a single-torrent action; acceptance is not state confirmation",
+        "description": "Requires exact dashboard Origin, JSON, explicit controls opt-in, and a fresh protected-torrent check. External optimizer and demo modes reject all mutations. No deletion, force-start, preferences or file-priority APIs. Do not automatically retry an uncertain result.",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Action"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "qBittorrent accepted request; observe next poll for result"
+          },
+          "400": {
+            "description": "Invalid body or action"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Observation mode or Origin mismatch"
+          },
+          "409": {
+            "description": "Missing or protected torrent"
+          },
+          "502": {
+            "description": "Result uncertain; inspect before retry"
+          },
+          "503": {
+            "description": "Persistence unavailable; no action is attempted before audit begins"
+          }
+        }
+      }
+    },
+    "/api/v1/live": {
+      "get": {
+        "summary": "Same-origin authenticated WebSocket snapshot stream",
+        "description": "Upgrade to WebSocket with the browser-cached Basic credentials and exact dashboard Origin. Server emits type=snapshot with status and activity on each observation change; type=heartbeat during idle periods. Reconnect resends the latest complete snapshot. No client messages or query-string credentials are accepted.",
+        "responses": {
+          "101": {
+            "description": "WebSocket stream established"
+          },
+          "403": {
+            "description": "Authentication or Origin rejected"
+          }
+        }
+      }
+    }
+  }
+}

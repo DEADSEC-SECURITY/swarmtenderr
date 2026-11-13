@@ -1,0 +1,11 @@
+.terraform/
+*.tfstate*
+.env*
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3*
+*.db*
+*.egg-info/
+build/
+dist/

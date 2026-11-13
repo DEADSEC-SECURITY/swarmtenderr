@@ -1,0 +1,15 @@
+name: swarmtenderr-demo
+services:
+  swarmtenderr:
+    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.1.0}
+    environment:
+      SWARMTENDERR_DEMO: "true"
+    ports: ["127.0.0.1:8787:8787"]
+    volumes: [state:/data]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+volumes:
+  state:
