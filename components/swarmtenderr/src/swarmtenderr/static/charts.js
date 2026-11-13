@@ -80,6 +80,7 @@
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
           event.preventDefault();
           value.index = event.key === "Home" ? 0 : event.key === "End" ? last : Math.max(0, Math.min(last, (value.index < 0 ? last : value.index) + (event.key === "ArrowLeft" ? -1 : 1)));
+          value.tipVisible = true;
           readout.textContent = describe(value, value.index);
           const seriesIndex = kind === "transfer" && !value.selected.Download ? 1 : 0;
           chart.dispatchAction({ type: "showTip", seriesIndex, dataIndex: value.index });
@@ -96,6 +97,10 @@
           event.preventDefault();
           options.openPeriod(value.rows[value.index].period, value.period);
         }
+      }, { signal: controller.signal });
+      target.addEventListener("blur", () => {
+        value.tipVisible = false;
+        chart.dispatchAction({ type: "hideTip" });
       }, { signal: controller.signal });
       if (kind === "transfer") {
         document.querySelectorAll("[data-chart-series]").forEach((button) => {
@@ -148,7 +153,7 @@
         graphic: rows.length ? [] : [{ type: "text", left: "center", top: "middle", style: { text: "Waiting for observations", fill: text } }],
       }, { notMerge: true });
       value.chart.resize();
-      if (value.index >= 0 && value.index < rows.length && (value.tipVisible || document.activeElement === target)) {
+      if (value.index >= 0 && value.index < rows.length && value.tipVisible) {
         value.chart.dispatchAction({ type: "showTip", seriesIndex: kind === "transfer" && !value.selected.Download ? 1 : 0, dataIndex: value.index });
       }
     }
