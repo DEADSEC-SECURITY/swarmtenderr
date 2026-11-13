@@ -1,12 +1,21 @@
-FROM python:3.13.13-slim-bookworm@sha256:355bfa66770995d7e9a0da4b3473b44d0cb451f6b56f5615ad9c39e3c4eca03f AS builder
+FROM python:3.13.13-slim-bookworm@sha256:355bfa66770995d7e9a0da4b3473b44d0cb451f6b56f5615ad9c39e3c4eca03f AS base
+COPY requirements.system.lock /tmp/system.lock
+RUN apt-get update -qq \
+    && xargs --no-run-if-empty env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --only-upgrade < /tmp/system.lock \
+    && rm -rf /var/lib/apt/lists/* /tmp/system.lock
+
+FROM base AS builder
 WORKDIR /build
 COPY pyproject.toml ./
-COPY requirements.lock ./
+COPY requirements.lock requirements.build.lock ./
+ARG SOURCE_DATE_EPOCH=315532800
+ENV SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH
+RUN pip install --no-cache-dir --no-compile --require-hashes -r requirements.build.lock \
+    && pip install --no-cache-dir --no-compile --require-hashes --prefix=/install -r requirements.lock
 COPY src ./src
-RUN pip install --no-cache-dir --require-hashes --prefix=/install -r requirements.lock \
-    && pip install --no-cache-dir --no-deps --prefix=/install .
+RUN pip install --no-cache-dir --no-compile --no-deps --no-build-isolation --prefix=/install .
 
-FROM python:3.13.13-slim-bookworm@sha256:355bfa66770995d7e9a0da4b3473b44d0cb451f6b56f5615ad9c39e3c4eca03f
+FROM base
 LABEL org.opencontainers.image.title="Swarmtenderr" \
       org.opencontainers.image.description="An explainable qBittorrent dashboard and queue manager" \
       org.opencontainers.image.licenses="MIT"

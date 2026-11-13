@@ -1,37 +1,33 @@
 name: swarmtenderr
 services:
   swarmtenderr:
-    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.1.0}
-    ports:
-      - "127.0.0.1:8787:8787"
+    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.2.0}
+    ports: ["127.0.0.1:8787:8787"]
     environment:
       SWARMTENDERR_PUBLIC_URL: ${SWARMTENDERR_PUBLIC_URL:-http://localhost:8787}
       SWARMTENDERR_DATABASE_URL: sqlite:////data/swarmtenderr.sqlite3
-      SWARMTENDERR_PASSWORD_FILE: /run/secrets/dashboard-password
-      QBITTORRENT_URL: ${QBITTORRENT_URL:-http://host.docker.internal:8080}
-      QBITTORRENT_USERNAME: ${QBITTORRENT_USERNAME:-admin}
-      QBITTORRENT_PASSWORD_FILE: /run/secrets/qbittorrent-password
-      SWARMTENDERR_CONTROLS: "false"
-    secrets:
-      - dashboard-password
-      - qbittorrent-password
-    volumes:
-      - state:/data
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      SWARMTENDERR_PASSWORD_FILE: /run/secrets/admin-password
+      SWARMTENDERR_CONFIG_FILE: /run/config/settings.json
+      SWARMTENDERR_LOCKED_SETTINGS: ${SWARMTENDERR_LOCKED_SETTINGS:-}
+    secrets: [admin-password]
+    configs:
+      - source: defaults
+        target: /run/config/settings.json
+    volumes: [state:/data]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     read_only: true
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m,mode=1777"]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    pids_limit: 64
+    pids_limit: 128
     mem_limit: 256m
     cpus: "0.50"
     restart: unless-stopped
 secrets:
-  dashboard-password:
-    file: ${SWARMTENDERR_PASSWORD_PATH:?Set the dashboard password file path}
-  qbittorrent-password:
-    file: ${QBITTORRENT_PASSWORD_PATH:?Set the qBittorrent password file path}
+  admin-password:
+    file: ${SWARMTENDERR_PASSWORD_PATH:?Set the initial administrator password file path}
+configs:
+  defaults:
+    file: ${SWARMTENDERR_CONFIG_PATH:-./settings.defaults.json}
 volumes:
   state:

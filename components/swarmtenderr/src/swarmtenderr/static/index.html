@@ -1,27 +1,598 @@
 <!doctype html>
 <html lang="en" data-theme="dark">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Swarmtenderr · Torrent care, made clear</title><link rel="icon" href="/logo.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
-<body>
-<aside class="sidebar">
-  <a class="brand" href="/"><img src="/logo.svg" alt="" width="34" height="34"><span>swarmtenderr<span class="brand-dot">.</span></span></a>
-  <div class="workspace"><span class="workspace-icon">S</span><div>Your swarm<small>Personal workspace</small></div><span class="workspace-arrow">⌄</span></div>
-  <p class="nav-label">WORKSPACE</p>
-  <nav aria-label="Main navigation"><button class="nav-item selected" data-view="overview"><span>◫</span>Overview</button><button class="nav-item" data-view="torrents"><span>⇅</span>Torrents<span id="nav-count" class="count">0</span></button><button class="nav-item" data-view="activity"><span>◷</span>Activity</button><button class="nav-item" data-view="settings"><span>⚙</span>Settings</button></nav>
-  <div class="sidebar-note"><span class="small-orbit">✳</span><h3>A little care.<br>A healthier swarm.</h3><p>See what’s moving, understand what’s waiting, and keep your queue in flow.</p><span class="note-pill">SELF-HOSTED · YOUR DATA</span></div>
-  <div class="sidebar-bottom"><span class="status-dot"></span><div>Swarmtenderr<small id="version">v0.1.0</small></div><span class="opensource">OPEN SOURCE</span></div>
-</aside>
-<main>
-  <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="view-name">Overview</strong></div><div class="topbar-right"><button class="theme-toggle" id="theme-toggle" aria-label="Switch to light mode" aria-pressed="true">☀ <span>Light mode</span></button><span id="connection" class="connection">Connecting…</span><span class="avatar">S</span></div></header>
-  <div class="content">
-    <div id="notice" class="notice" role="status" hidden></div>
-    <section class="page-heading"><div><p class="eyebrow">A LITTLE LESS WAITING</p><h1 id="page-title">Your queue, in flow.</h1><p id="page-description">A clear view of your torrents. A little more peace of mind.</p></div><button class="button" id="refresh">↻ <span>Refresh</span></button></section>
-    <section class="stats" id="stats" aria-label="Torrent overview"><article class="stat"><div><span>Download speed</span><span class="stat-icon">↓</span></div><strong id="download">—</strong><small>Across your current transfers</small></article><article class="stat"><div><span>Active downloads</span><span class="stat-icon">⇅</span></div><strong id="active">—</strong><small id="slots">Native qBittorrent queue</small></article><article class="stat"><div><span>Waiting in queue</span><span class="stat-icon">≋</span></div><strong id="queued">—</strong><small>Ready for their turn</small></article><article class="stat"><div><span>Giving back</span><span class="stat-icon">↑</span></div><strong id="seeding">—</strong><small id="upload">Seeding keeps the swarm alive</small></article></section>
-    <section class="overview-panels" id="overview-panels"><article class="flow-panel"><div class="panel-label"><span class="status-dot"></span> SWARM INSIGHT <span id="engine-badge">NATIVE QUEUE</span></div><h2 id="engine-title">Every torrent has a story.</h2><p id="engine-description">Inspect a transfer to see its progress, availability, and queue position.</p><div class="flow-footer"><span id="engine-footnote">Automatic policy decisions appear when an optimizer is connected.</span><span class="flow-orbit" aria-hidden="true">✳</span></div></article><article class="chart-panel"><div class="section-title"><h2>Transfer pulse</h2><span class="subtle">Recent observations</span></div><strong id="pulse-speed">—</strong><span class="subtle"> download</span><svg class="chart" viewBox="0 0 440 90" role="img" aria-label="Recent observed download speed"><path id="chart-area" class="chart-area" d="M0 90H440"></path><path id="chart-line" class="chart-line" d="M0 89H440"></path></svg><div class="chart-labels"><span id="chart-start">Waiting for observations</span><span>Now</span></div></article></section>
-    <section id="torrent-section" class="table-panel"><div class="section-title table-title"><div><h2>Your torrents <span id="table-count" class="table-count">0</span></h2><p>One place to keep an eye on everything.</p></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Find a torrent…" aria-label="Find a torrent"></label></div><div class="table-toolbar"><div class="tabs" role="group" aria-label="Filter torrents"><button class="active" data-filter="all">All torrents</button><button data-filter="downloading">Downloading</button><button data-filter="waiting">Waiting</button><button data-filter="seeding">Seeding</button></div><label class="sort-label">Sort by <select id="sort" aria-label="Sort torrents"><option value="priority">Queue position</option><option value="speed">Download speed</option><option value="progress">Progress</option><option value="name">Name</option></select></label></div><div class="table-scroll"><table><thead><tr><th scope="col">TORRENT</th><th scope="col">PROGRESS</th><th scope="col">SPEED</th><th scope="col">TIME LEFT</th><th scope="col">STATUS</th><th scope="col"><span class="visually-hidden">Details</span></th></tr></thead><tbody id="torrent-rows"></tbody></table></div><div id="empty" class="empty" hidden>No torrents match this view.</div><footer class="table-footer"><span id="showing">Waiting for your first observation</span><span id="updated">Live updates via WebSocket</span></footer></section>
-    <section id="activity-section" class="table-panel standalone" hidden><div class="section-title table-title"><div><h2>A record of care</h2><p>Manual requests and confirmed optimizer decisions.</p></div></div><div id="activity-list" class="activity-list"></div></section>
-    <section id="settings-section" class="table-panel standalone" hidden><div class="section-title table-title"><div><h2>Your setup</h2><p>Configuration comes from your deployment. Credentials stay on the server.</p></div></div><dl id="settings-list" class="settings-list"></dl><p class="settings-note">Swarmtenderr 0.1 monitors qBittorrent and offers opt-in manual queue controls. Apollo’s existing optimizer supplies automatic scheduling decisions when connected. The standalone app does not yet run that scheduling engine.</p></section>
-    <footer class="page-footer"><span>Thoughtfully tending your torrents.</span><span>Swarmtenderr · v0.1 <span class="footer-dot">●</span> All times in your browser’s timezone</span></footer>
-  </div>
-</main>
-<dialog id="details"><div class="dialog-top"><span class="eyebrow">TORRENT DETAILS</span><button id="close-details" class="icon-button" aria-label="Close details">×</button></div><h2 id="detail-name"></h2><p id="detail-reason"></p><dl id="detail-values" class="settings-list"></dl><p id="control-note" class="subtle"></p><div id="actions" class="action-buttons"><button class="button" data-action="prioritize">Move to top</button><button class="button" data-action="reannounce">Reannounce</button><button class="button" data-action="pause">Pause</button><button class="button" data-action="resume">Resume</button></div><div id="action-result" role="status"></div></dialog>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Swarmtenderr</title>
+    <link rel="icon" href="/logo.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <section id="login-screen" class="login-screen" hidden>
+      <div class="login-brand">
+        <img src="/logo.svg" width="36" height="36" alt="" /><strong
+          >Swarmtenderr</strong
+        >
+      </div>
+      <form id="login-form" class="login-card">
+        <h1>Sign in</h1>
+        <p class="muted">Use your Swarmtenderr account.</p>
+        <div id="login-demo" class="banner" hidden>
+          Demo data. Sign in with <strong>demo / demo</strong> to try accounts
+          and settings.
+        </div>
+        <label
+          >Username<input
+            id="login-username"
+            name="username"
+            autocomplete="username"
+            required
+            autofocus /></label
+        ><label
+          >Password<input
+            id="login-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+        /></label>
+        <div id="login-error" class="form-message error" role="alert"></div>
+        <button class="button primary full" type="submit">Sign in</button>
+        <div id="sso-login" hidden>
+          <div class="divider"><span>or</span></div>
+          <a id="sso-login-link" class="button full" href="/auth/oidc/login"
+            >Sign in with SSO</a
+          >
+        </div>
+      </form>
+      <p class="login-footer">Swarmtenderr <span id="login-version"></span></p>
+    </section>
+    <div id="application" class="application" hidden>
+      <a class="skip-link" href="#page-title">Skip to content</a>
+      <aside class="sidebar">
+        <a class="brand" href="/"
+          ><img src="/logo.svg" width="30" height="30" alt="" /><strong
+            >Swarmtenderr</strong
+          ></a
+        >
+        <nav aria-label="Main navigation">
+          <button class="nav-item selected" data-view="overview">
+            <span aria-hidden="true">▦</span>Overview
+          </button>
+          <button class="nav-item" data-view="torrents">
+            <span aria-hidden="true">⇅</span>Torrents<span
+              id="nav-count"
+              class="count"
+              >0</span
+            >
+          </button>
+          <button class="nav-item" data-view="history">
+            <span aria-hidden="true">◷</span>Completion history
+          </button>
+          <button class="nav-item" data-view="activity">
+            <span aria-hidden="true">≡</span>Activity
+          </button>
+          <button class="nav-item admin-only" data-view="settings">
+            <span aria-hidden="true">⚙</span>Settings
+          </button>
+          <button class="nav-item admin-only" data-view="users">
+            <span aria-hidden="true">♙</span>Users
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="client-status">
+            <span id="client-dot" class="status-dot"></span
+            ><span id="client-status">Connecting</span>
+          </div>
+          <span id="version" class="muted small"></span>
+        </div>
+      </aside>
+      <main>
+        <header class="topbar">
+          <div>
+            <h1 id="page-title" tabindex="-1">Overview</h1>
+            <span id="connection" class="muted small" aria-live="polite"
+              >Connecting to live updates…</span
+            >
+          </div>
+          <div class="header-actions">
+            <span id="demo-badge" class="badge warning" hidden>Demo data</span
+            ><button
+              id="theme-toggle"
+              class="icon-button"
+              aria-label="Switch to light mode"
+              title="Switch theme"
+            >
+              ☀</button
+            ><button
+              id="refresh"
+              class="button compact"
+              title="Refresh observations"
+            >
+              <span aria-hidden="true">↻</span
+              ><span class="refresh-label">Refresh</span></button
+            ><button id="account-button" class="account-button">
+              <span id="account-avatar" class="avatar">A</span
+              ><span
+                ><strong id="account-name">Account</strong
+                ><small id="account-role"></small></span
+              ><span aria-hidden="true">⌄</span>
+            </button>
+          </div>
+        </header>
+        <div class="content">
+          <div id="notice" class="banner warning" role="status" hidden></div>
+          <section id="view-overview" class="view">
+            <div class="metric-grid">
+              <article class="metric">
+                <span>Completed today</span
+                ><strong id="completed-today">—</strong
+                ><small id="today-note">Observed torrents</small>
+              </article>
+              <article class="metric">
+                <span>Completed this month</span
+                ><strong id="completed-month">—</strong
+                ><small id="month-note">Observed torrents</small>
+              </article>
+              <article class="metric">
+                <span>Payload this month</span
+                ><strong id="payload-month">—</strong
+                ><small>Completed wanted data</small>
+              </article>
+              <article class="metric">
+                <span>Download speed</span><strong id="download-speed">—</strong
+                ><small id="upload-speed">Upload —</small>
+              </article>
+            </div>
+            <div
+              id="queue-summary"
+              class="queue-summary"
+              aria-label="Current queue"
+            ></div>
+            <div class="chart-grid">
+              <article class="panel chart-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Completed torrents</h2>
+                    <p id="completion-chart-caption">Last 30 days</p>
+                  </div>
+                  <div
+                    class="segmented"
+                    role="group"
+                    aria-label="Completion chart period"
+                  >
+                    <button class="selected" data-chart-period="daily">
+                      Daily</button
+                    ><button data-chart-period="monthly">Monthly</button>
+                  </div>
+                </div>
+                <div
+                  id="completion-chart"
+                  class="chart"
+                  role="img"
+                  aria-label="Completed torrents by period"
+                ></div>
+                <div id="completion-legend" class="chart-legend"></div>
+              </article>
+              <article class="panel chart-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Transfer rates</h2>
+                    <p>Recent observations</p>
+                  </div>
+                  <div class="legend">
+                    <span class="download-key">↓ Download</span
+                    ><span class="upload-key">↑ Upload</span>
+                  </div>
+                </div>
+                <div
+                  id="transfer-chart"
+                  class="chart"
+                  role="img"
+                  aria-label="Download and upload rates"
+                ></div>
+                <div id="transfer-legend" class="chart-legend"></div>
+              </article>
+            </div>
+            <section id="category-panel" class="panel" hidden>
+              <div class="panel-heading">
+                <div>
+                  <h2>Top completion categories</h2>
+                  <p>This calendar month · up to eight categories</p>
+                </div>
+                <button class="text-button" data-open-view="history">
+                  View history →
+                </button>
+              </div>
+              <div id="category-breakdown" class="category-breakdown"></div>
+            </section>
+            <section id="optimizer-panel" class="panel" hidden>
+              <div class="panel-heading">
+                <div>
+                  <h2>Optimizer</h2>
+                  <p id="optimizer-mode"></p>
+                </div>
+                <span id="optimizer-state" class="badge"></span>
+              </div>
+              <p id="optimizer-explanation" class="optimizer-explanation"></p>
+              <div id="optimizer-capacity" class="capacity-grid"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Active downloads</h2>
+                  <p>Transfers currently receiving data</p>
+                </div>
+                <button class="text-button" data-open-view="torrents">
+                  View all torrents →
+                </button>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Progress</th>
+                      <th>Download</th>
+                      <th>Remaining</th>
+                      <th>ETA</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="active-rows"></tbody>
+                </table>
+              </div>
+              <p id="active-empty" class="empty" hidden>
+                No downloads are currently receiving data.
+              </p>
+            </section>
+            <p id="coverage-note" class="footnote"></p>
+          </section>
+          <section id="view-torrents" class="view" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Torrents <span id="table-count" class="count"></span></h2>
+                  <p id="torrent-summary"></p>
+                </div>
+                <div class="toolbar">
+                  <input
+                    id="torrent-search"
+                    type="search"
+                    placeholder="Search torrents"
+                    aria-label="Search torrents"
+                  /><select id="torrent-category" aria-label="Filter category">
+                    <option value="">All categories</option></select
+                  ><select id="torrent-filter" aria-label="Filter state">
+                    <option value="all">All states</option>
+                    <option value="downloading">Downloading</option>
+                    <option value="queued">Queued</option>
+                    <option value="stalled">Stalled</option>
+                    <option value="metadata">Metadata</option>
+                    <option value="seeding">Seeding</option>
+                    <option value="stopped">Stopped</option>
+                    <option value="complete">Complete</option></select
+                  ><select id="torrent-sort" aria-label="Sort torrents">
+                    <option value="priority">Queue position</option>
+                    <option value="speed">Download speed</option>
+                    <option value="progress">Progress</option>
+                    <option value="name">Name</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name / category</th>
+                      <th>Status</th>
+                      <th>Progress</th>
+                      <th>Download</th>
+                      <th>Upload</th>
+                      <th>ETA</th>
+                      <th>Seeds / peers</th>
+                      <th>Queue</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="torrent-rows"></tbody>
+                </table>
+              </div>
+              <p id="torrent-empty" class="empty" hidden>
+                No torrents match these filters.
+              </p>
+              <div class="pagination">
+                <span id="torrent-page-label"></span>
+                <div>
+                  <button id="torrent-prev" class="button compact">
+                    Previous</button
+                  ><button id="torrent-next" class="button compact">
+                    Next
+                  </button>
+                </div>
+              </div>
+            </section>
+          </section>
+          <section id="view-history" class="view" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Completion history</h2>
+                  <p>
+                    Persistent records, including torrents removed from the
+                    client
+                  </p>
+                </div>
+                <a
+                  id="export-history"
+                  class="button"
+                  href="/api/v1/completions.csv"
+                  >Export CSV</a
+                >
+              </div>
+              <form id="history-filter" class="filter-form">
+                <label
+                  >Search<input
+                    id="history-search"
+                    type="search"
+                    placeholder="Torrent name" /></label
+                ><label
+                  >Category<input
+                    id="history-category"
+                    placeholder="Any category" /></label
+                ><label class="checkbox-filter"
+                  ><input
+                    id="history-uncategorized"
+                    type="checkbox"
+                  />Uncategorized only</label
+                >
+                <label>From<input id="history-from" type="date" /></label
+                ><label>Through<input id="history-to" type="date" /></label
+                ><button class="button" type="submit">Apply filters</button>
+              </form>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Torrent</th>
+                      <th>Category</th>
+                      <th>Completed</th>
+                      <th>Payload</th>
+                      <th>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody id="history-rows"></tbody>
+                </table>
+              </div>
+              <p id="history-empty" class="empty" hidden>
+                No completions recorded for this range.
+              </p>
+              <div class="pagination">
+                <span id="history-page-label"></span>
+                <div>
+                  <button id="history-prev" class="button compact">
+                    Previous</button
+                  ><button id="history-next" class="button compact">
+                    Next
+                  </button>
+                </div>
+              </div>
+            </section>
+            <p id="history-coverage" class="footnote"></p>
+          </section>
+          <section id="view-activity" class="view" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Activity</h2>
+                  <p>
+                    Client requests, confirmations and administrative changes
+                  </p>
+                </div>
+                <div class="segmented" role="group" aria-label="Activity type">
+                  <button class="selected" data-activity="actions">
+                    Torrent actions</button
+                  ><button class="admin-only" data-activity="audit">
+                    Administration
+                  </button>
+                </div>
+              </div>
+              <div id="activity-list" class="activity-list"></div>
+            </section>
+          </section>
+          <section id="view-settings" class="view" hidden>
+            <div id="settings-conflict" class="banner warning" hidden>
+              Settings changed in another session.
+              <button id="reload-settings" class="text-button">
+                Reload saved values
+              </button>
+            </div>
+            <div class="settings-layout">
+              <nav
+                id="settings-tabs"
+                class="settings-tabs"
+                aria-label="Settings sections"
+              ></nav>
+              <div id="settings-forms"></div>
+            </div>
+          </section>
+          <section id="view-users" class="view" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Users</h2>
+                  <p>Account access for this installation</p>
+                </div>
+                <button id="new-user" class="button primary">Add user</button>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Role</th>
+                      <th>Sign-in method</th>
+                      <th>Status</th>
+                      <th>Last sign-in</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="user-rows"></tbody>
+                </table>
+              </div>
+            </section>
+            <div class="role-guide">
+              <p>
+                <strong>Administrator</strong> manages configuration, accounts
+                and torrent controls.
+              </p>
+              <p>
+                <strong>Operator</strong> monitors the installation and uses
+                permitted torrent controls.
+              </p>
+              <p>
+                <strong>Viewer</strong> reads status, statistics and history.
+              </p>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <dialog id="details-dialog">
+      <div class="dialog-heading">
+        <h2>Torrent details</h2>
+        <button
+          class="icon-button"
+          data-close="details-dialog"
+          aria-label="Close torrent details"
+        >
+          ×
+        </button>
+      </div>
+      <h3 id="detail-name"></h3>
+      <div id="detail-state"></div>
+      <dl id="detail-values" class="definition-grid"></dl>
+      <div id="detail-policy" class="inset" hidden></div>
+      <section class="detail-activity"><h3>Recent activity</h3><div id="detail-actions"></div></section>
+      <p id="control-note" class="muted"></p>
+      <div class="button-row" id="torrent-actions">
+        <button class="button" data-action="prioritize">Move to top</button
+        ><button class="button" data-action="reannounce">Reannounce</button
+        ><button class="button" data-action="pause">Pause</button
+        ><button class="button" data-action="resume">Resume</button>
+      </div>
+      <p id="action-result" class="form-message" role="status"></p>
+    </dialog>
+    <dialog id="user-dialog">
+      <form id="user-form">
+        <div class="dialog-heading">
+          <h2 id="user-dialog-title">Add user</h2>
+          <button
+            class="icon-button"
+            data-close="user-dialog"
+            type="button"
+            aria-label="Close user editor"
+          >
+            ×
+          </button>
+        </div>
+        <label
+          >Username<input
+            id="user-username"
+            autocomplete="off"
+            pattern="[a-z0-9][a-z0-9._-]{2,63}"
+            required /></label
+        ><label
+          >Display name<input
+            id="user-display-name"
+            maxlength="100"
+            required /></label
+        ><label
+          >Role<select id="user-role">
+            <option value="viewer">Viewer</option>
+            <option value="operator">Operator</option>
+            <option value="admin">Administrator</option>
+          </select></label
+        ><label id="user-password-label"
+          >Initial password<input
+            id="user-password"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            maxlength="256" /></label
+        ><label id="user-active-label" class="checkbox-label"
+          ><input id="user-active" type="checkbox" />Account enabled</label
+        >
+        <div id="user-error" class="form-message error" role="alert"></div>
+        <div class="button-row">
+          <button class="button primary" type="submit">Save user</button
+          ><button id="reset-user-password" class="button" type="button">
+            Reset password
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="password-dialog">
+      <form id="password-form">
+        <div class="dialog-heading">
+          <h2 id="password-dialog-title">Change password</h2>
+          <button
+            class="icon-button"
+            data-close="password-dialog"
+            type="button"
+            aria-label="Close password editor"
+          >
+            ×
+          </button>
+        </div>
+        <label id="current-password-label"
+          >Current password<input
+            id="current-password"
+            type="password"
+            autocomplete="current-password" /></label
+        ><label
+          >New password<input
+            id="new-password"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            maxlength="256"
+            required /></label
+        ><label
+          >Confirm new password<input
+            id="confirm-password"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            maxlength="256"
+            required
+        /></label>
+        <div id="password-error" class="form-message error" role="alert"></div>
+        <button class="button primary" type="submit">Change password</button>
+      </form>
+    </dialog>
+    <dialog id="account-dialog">
+      <div class="dialog-heading">
+        <h2>Your account</h2>
+        <button
+          class="icon-button"
+          data-close="account-dialog"
+          aria-label="Close account"
+        >
+          ×
+        </button>
+      </div>
+      <dl id="account-values" class="definition-grid"></dl>
+      <p id="account-sso-note" class="muted" hidden>
+        Your password is managed by your SSO provider.
+      </p>
+      <div class="button-row">
+        <button id="change-password" class="button">Change password</button
+        ><button id="logout" class="button danger">Sign out</button>
+      </div>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

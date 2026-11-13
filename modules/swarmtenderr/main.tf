@@ -23,11 +23,17 @@ resource "docker_container" "app" {
     "SWARMTENDERR_PUBLIC_URL=${var.public_url}",
     "QBITTORRENT_URL=${var.qbittorrent_url}",
     "QBITTORRENT_USERNAME=${var.qbittorrent_username}",
-    "QBITTORRENT_PASSWORD_FILE=/run/secrets/qbittorrent-password",
+    "SWARMTENDERR_DEFAULTS_JSON=${jsonencode(var.defaults)}",
+    "SWARMTENDERR_LOCKED_SETTINGS=${join(",", var.locked_settings)}",
     "SWARMTENDERR_PASSWORD_FILE=/run/secrets/dashboard-password",
     "SWARMTENDERR_CONTROLS=${var.controls_enabled}",
     ], var.postgres_url_file != "" ? ["SWARMTENDERR_DATABASE_URL_FILE=/run/secrets/database-url"] : [],
-  var.postgres_ca_file != "" ? ["PGSSLROOTCERT=/run/certs/postgres-ca.pem", "PGSSLMODE=verify-full"] : [])
+    var.postgres_ca_file != "" ? ["PGSSLROOTCERT=/run/certs/postgres-ca.pem", "PGSSLMODE=verify-full"] : [],
+    var.qbittorrent_password_file != "" ? ["QBITTORRENT_PASSWORD_FILE=/run/secrets/qbittorrent-password"] : [],
+    var.oidc_secret_file != "" ? ["SWARMTENDERR_OIDC_SECRET_FILE=/run/secrets/oidc-client-secret"] : [],
+    var.identity_ca_file != "" ? ["SSL_CERT_FILE=/run/certs/identity-ca.pem"] : [],
+    var.observer_feed_file != "" ? ["SWARMTENDERR_OPTIMIZER_STATE=/observer/feed.json"] : [],
+  var.library_probe_path != "" ? ["SWARMTENDERR_LIBRARY_PROBE_PATH=/probes/library"] : [])
 
   capabilities {
     drop = ["ALL"]
@@ -46,10 +52,28 @@ resource "docker_container" "app" {
     container_path = "/run/secrets/dashboard-password"
     read_only      = true
   }
-  volumes {
-    host_path      = var.qbittorrent_password_file
-    container_path = "/run/secrets/qbittorrent-password"
-    read_only      = true
+  dynamic "volumes" {
+    for_each = { for name, source in {
+      "qbittorrent-password" = var.qbittorrent_password_file,
+      "oidc-client-secret"   = var.oidc_secret_file
+    } : name => source if source != "" }
+    content {
+      host_path      = volumes.value
+      container_path = "/run/secrets/${volumes.key}"
+      read_only      = true
+    }
+  }
+  dynamic "volumes" {
+    for_each = { for destination, source in {
+      "/run/certs/identity-ca.pem" = var.identity_ca_file,
+      "/observer/feed.json"        = var.observer_feed_file,
+      "/probes/library"            = var.library_probe_path
+    } : destination => source if source != "" }
+    content {
+      host_path      = volumes.value
+      container_path = volumes.key
+      read_only      = true
+    }
   }
   dynamic "volumes" {
     for_each = var.postgres_url_file != "" ? [var.postgres_url_file] : []

@@ -1,47 +1,50 @@
-# Swarmtenderr Docker deployment
+# Swarmtenderr Docker module
 
-Reusable Terraform module for a pre-existing Docker host. Configure
-`kreuzwerker/docker ~> 4.7` in the caller, locally or through its supported SSH
-transport. The module creates one container and a `prevent_destroy` state volume.
-It never reads, generates, outputs or provisions credential values.
+Terraform owns the container, protected persistent volume, networking, public
+configuration defaults and settings locks. Credentials stay in runtime host files;
+the module never reads their values into plans, state, outputs or image layers.
 
 ```hcl
 module "swarmtenderr" {
-  source = "./modules/swarmtenderr"
+  source = "git::https://github.com/DEADSEC-SECURITY/swarmtenderr.git//modules/swarmtenderr?ref=YOUR_REVIEWED_COMMIT"
 
-  image                     = "elgon2003/swarmtenderr@sha256:<verified-release-digest>"
-  public_url                = "https://swarmtenderr.example.internal"
-  qbittorrent_url           = "http://qbittorrent:8080"
-  network_name              = "media"
-  password_file             = "/etc/swarmtenderr/dashboard-password"
-  qbittorrent_password_file = "/etc/swarmtenderr/qbittorrent-password"
-  # Optional: omit for SQLite.
-  # postgres_url_file = "/etc/swarmtenderr/postgresql-url"
-  # postgres_ca_file  = "/etc/ssl/certs/lab-public-root.pem"
+  image         = "elgon2003/swarmtenderr@sha256:YOUR_ACCEPTED_DIGEST"
+  public_url    = "https://swarmtenderr.example.internal"
+  password_file = "/run/operator-secrets/swarmtenderr-admin-password"
+  network_name  = "media"
+
+  defaults = {
+    timezone           = "America/New_York"
+    policy_mode        = "observe"
+    managed_categories = ["sonarr", "radarr"]
+    sso_enabled        = true
+    sso_issuer         = "https://identity.example.internal/application/o/swarmtenderr/"
+    sso_client_id      = "PUBLIC_CLIENT_ID"
+    sso_allowed_groups = ["media"]
+  }
+  oidc_secret_file = "/run/operator-secrets/swarmtenderr-oidc-secret"
+  identity_ca_file = "/etc/ssl/certs/lab-ca-bundle.pem"
+  locked_settings  = ["sso_issuer", "sso_client_id"]
 }
 ```
 
-Replace the digest placeholder with the exact successful release output. Mutable
-tags are deliberately rejected. Pre-create the credential files on the Docker
-host with access for container UID 10001, and configure PostgreSQL independently
-when selected. A file path is not a secret; file contents never enter Terraform
-state. Do not replace these inputs with `file()` calls or inline credentials.
-For a private database CA, `postgres_ca_file` mounts its public certificate and
-sets libpq's `PGSSLROOTCERT` and `PGSSLMODE=verify-full` defaults. Keep equivalent
-verification in the connection URL if it explicitly overrides libpq defaults.
+Replace examples and pin source commit/image digest. The bootstrap password file
+must contain 12–256 characters. Bind-backed secret files must be readable by UID
+10001 and protected from other host users. Terraform cannot create their contents.
 
-The published port defaults to `127.0.0.1:8787`. Put your normal TLS/auth boundary
-in front for LAN access. `public_url` must be the exact browser origin.
-`controls_enabled` defaults to false. The optional existing network should reach
-qBittorrent and any external database. This module does not deploy a reverse
-proxy, DNS, qBittorrent or PostgreSQL, or connect Apollo's private optimizer state.
-Apollo uses its own existing Compose, DNS and ingress owners for that integration.
+Client settings are optional initial defaults; use the UI if preferred. PostgreSQL
+uses `postgres_url_file` and optional `postgres_ca_file` references. Provision its
+database/schema separately and use verified TLS remotely. SQLite remains the
+default. Both backends require the persistent `/data` encryption key.
 
-`swarmtenderr_contract_v1` contains the version, URL, container, exact image,
-database kind and volume name. No credential values or PostgreSQL URLs are output.
+Saved UI settings override unlocked defaults. Locked deployment settings also take
+precedence over older saved overrides. Never put a secret into `defaults`.
+`observer_feed_file` mounts a sanitized feed and forces observation.
+`library_probe_path` optionally mounts an import filesystem read-only for actual
+capacity probing; it grants no media write access.
 
-Run `terraform fmt -recursive`, `terraform init -backend=false`,
-`terraform validate`, and `terraform test`. All native tests explicitly plan
-against a mocked Docker provider. Review a real target plan before apply.
-Rollback to a prior tested digest. Back up the database first and preserve the
-volume; changing database backends does not migrate existing data automatically.
+The port binds to loopback by default. Use a local TLS proxy or explicitly select
+a trusted binding. The volume has `prevent_destroy`; replacing data needs a backup
+and migration decision. `swarmtenderr_contract_v1` retains public endpoint/image/
+database metadata. Run `terraform fmt -check -recursive`, `init -backend=false`,
+`validate` and `test` (mocked Docker; no infrastructure apply).

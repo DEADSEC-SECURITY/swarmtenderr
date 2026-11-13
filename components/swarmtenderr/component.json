@@ -1,27 +1,33 @@
 {
   "schema_version": 1,
   "id": "swarmtenderr",
-  "owner": "apollo-media",
+  "owner": "swarmtenderr",
   "execution": "container",
   "sources": [
     "src",
     "Dockerfile",
     "pyproject.toml",
     "requirements.lock",
-    "config"
+    "config",
+    "requirements.build.lock",
+    "requirements.system.lock"
   ],
   "dependencies": [],
   "entrypoints": [
     {
       "command": "apollo-swarmtenderr",
       "source": "src/swarmtenderr/app.py"
+    },
+    {
+      "command": "apollo-swarmtenderr-maintenance",
+      "source": "src/swarmtenderr/maintenance.py"
     }
   ],
   "tests": {
     "unit": "tests"
   },
   "runtime": "Python 3.13, Starlette/Uvicorn WebSocket server, SQLite or PostgreSQL; one process with an independent observer",
-  "secret_inputs": "Read-only runtime files for dashboard password, qBittorrent password and optional PostgreSQL URL; never Terraform values",
-  "state_contract": "Version 1 SQL schema, bounded samples and durable action audit; optional read-only Apollo optimizer state",
+  "secret_inputs": "Runtime files for initial admin bootstrap, optional client/provider credentials and PostgreSQL URL; app-owned encrypted UI overrides and a mode-0600 runtime key. No Terraform secret values.",
+  "state_contract": "Version 2 SQL schema with transactional migrations, durable completion/session/user/configuration/audit records; encrypted integration credentials use the separate persistent runtime key.",
   "activation": "Local-first; Apollo image digest is opt-in, with controls disabled when observing its existing controller"
 }

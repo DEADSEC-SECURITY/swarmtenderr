@@ -1,0 +1,9 @@
+# Configure public OIDC defaults in settings.defaults.json; never put secrets there.
+services:
+  swarmtenderr:
+    environment:
+      SWARMTENDERR_OIDC_SECRET_FILE: /run/secrets/oidc-client-secret
+    secrets: [oidc-client-secret]
+secrets:
+  oidc-client-secret:
+    file: ${SWARMTENDERR_OIDC_SECRET_PATH:?Set the OIDC client secret file path}
