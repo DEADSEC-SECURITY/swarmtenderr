@@ -19,7 +19,7 @@ unpublished image or an untested server deployment.
 | Client/discovery test | `/api/v1/settings/test-connection`, `/settings/test-sso` | Admin | Incorrect credentials, discovery/signing issuer and real qBittorrent login |
 | Add/edit/deactivate users | `/api/v1/users`, `/users/{id}` | Admin | Roles, last-local-admin protection, validation and revocation |
 | Admin password reset | `/api/v1/users/{id}/password` | Admin | Password hash, old-session revocation; on-host recovery also tested |
-| Live reconnect and access changes | `/api/v1/live` | Authenticated viewer+ | Real sockets, origin rejection, resync, logout; role/deactivation/idle checks |
+| Live reconnect and access changes | `/api/v1/live` | Authenticated viewer+ | Real sockets, origin rejection, resync, logout, role and deactivation revocation; isolated idle-expiry checks |
 | Observe/enforce | Persisted policy, DB-clock exclusive lease | Admin settings | Deterministic policy matrix plus real ceiling/restoration/protection checks |
 | Theme | Browser-local preference | Anyone signed in | Browser review at desktop/laptop/phone widths in both themes |
 

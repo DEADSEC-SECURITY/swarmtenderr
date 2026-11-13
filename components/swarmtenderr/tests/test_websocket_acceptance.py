@@ -8,6 +8,77 @@ from websockets.sync.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 
+
+def assert_revoked(socket):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            socket.recv(timeout=max(.1, deadline-time.monotonic()))
+        except ConnectionClosed as error:
+            assert error.code == 4401
+            return
+    raise AssertionError('Established socket retained revoked access')
+
+
+def account_flows(admin, headers, url, origin, administrator):
+    password = 'test-only-new-account-pass'
+    accounts = {}
+    for role in ('viewer', 'operator'):
+        response = admin.post('/api/v1/users', json={'username': 'acceptance-' + role,
+            'display_name': 'Acceptance ' + role, 'role': role, 'password': password}, headers=headers)
+        assert response.status_code == 200, response.text
+        accounts[role] = next(user for user in response.json()['users'] if user['username'] == 'acceptance-' + role)
+    def sign_in(role, secret=password):
+        client = httpx.Client(base_url=str(admin.base_url), trust_env=False, timeout=10)
+        response = client.post('/api/v1/auth/login', json={'username': 'acceptance-' + role, 'password': secret}, headers={'Origin': origin})
+        assert response.status_code == 200
+        return client, {'Origin': origin, 'X-CSRF-Token': response.json()['csrf']}
+    viewer, viewer_headers = sign_in('viewer')
+    operator, operator_headers = sign_in('operator')
+    try:
+        for path in ('/api/v1/status', '/api/v1/statistics', '/api/v1/completions', '/api/v1/activity'):
+            assert viewer.get(path).status_code == 200
+        assert viewer.get('/api/v1/settings').status_code == 403
+        assert viewer.get('/api/v1/users').status_code == 403
+        assert viewer.post('/api/v1/users', json={}, headers=viewer_headers).status_code == 403
+        assert viewer.post('/api/v1/torrents/' + 'a'*40 + '/actions', json={'action':'pause'}, headers=viewer_headers).status_code == 403
+        assert operator.get('/api/v1/settings').status_code == 403
+        def socket_for(client):
+            cookie = '; '.join(f'{key}={value}' for key,value in client.cookies.items())
+            return connect(url, origin=origin, additional_headers={'Cookie':cookie}, open_timeout=5)
+        with socket_for(viewer) as stream:
+            assert json.loads(stream.recv(timeout=10))['status']['user']['role'] == 'viewer'
+            assert admin.patch('/api/v1/users/' + accounts['viewer']['id'], json={'role':'operator'}, headers=headers).status_code == 200
+            assert_revoked(stream)
+        assert viewer.get('/api/v1/status').status_code == 401
+        viewer.close()
+        viewer, viewer_headers = sign_in('viewer')
+        assert viewer.get('/api/v1/me').json()['user']['role'] == 'operator'
+        with socket_for(viewer) as stream:
+            stream.recv(timeout=10)
+            assert admin.patch('/api/v1/users/' + accounts['viewer']['id'], json={'active':False}, headers=headers).status_code == 200
+            assert_revoked(stream)
+        assert viewer.get('/api/v1/status').status_code == 401
+        reset = 'test-only-reset-account-pass'
+        assert admin.post('/api/v1/users/' + accounts['operator']['id'] + '/password', json={'password':reset}, headers=headers).status_code == 200
+        assert operator.get('/api/v1/status').status_code == 401
+        operator.close()
+        operator, operator_headers = sign_in('operator', reset)
+        replacement = 'test-only-changed-account-pass'
+        assert operator.post('/api/v1/account/password', json={'current_password':None,'new_password':replacement}, headers=operator_headers).status_code == 400
+        assert operator.post('/api/v1/account/password', json={'current_password':reset,'new_password':replacement}, headers=operator_headers).status_code == 200
+        assert operator.get('/api/v1/status').status_code == 401
+        operator.close()
+        operator, operator_headers = sign_in('operator', replacement)
+        assert operator.get('/api/v1/statistics').status_code == 200
+        assert operator.post('/api/v1/auth/logout', json={}, headers=operator_headers).status_code == 200
+        assert admin.patch('/api/v1/users/' + administrator['id'], json={'active':False}, headers=headers).status_code == 400
+    finally:
+        viewer.close()
+        operator.close()
+    print('Real HTTP accounts: three roles, role/deactivation socket revocation, last-admin protection, password reset/change and login/logout passed', flush=True)
+
+
 def main():
     url = sys.argv[1]
     origin = 'http://localhost:8787'
@@ -19,6 +90,7 @@ def main():
     assert response.status_code == 200, response.text
     session = response.json()
     headers = {'Origin': origin, 'X-CSRF-Token': session['csrf']}
+    account_flows(client, headers, url, origin, session['user'])
     cookie = '; '.join(f'{key}={value}' for key, value in client.cookies.items())
     for bad_origin, cookies in [('https://untrusted.example', cookie), (origin, '')]:
         try:
