@@ -5,11 +5,13 @@
   else root.SwarmCharts = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
-  function periodBounds(period) {
+  function periodBounds(period, mode = "daily") {
     if (!/^\d{4}-\d{2}(-\d{2})?$/.test(period)) throw new Error("Invalid period");
-    if (period.length === 10) return { from: period, to: period };
-    const [year, month] = period.split("-").map(Number);
-    return { from: period + "-01", to: period + "-" + new Date(Date.UTC(year, month, 0)).getUTCDate() };
+    const [year, month, day] = period.split("-").map(Number);
+    if (month < 1 || month > 12 || (day && new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) !== period)) throw new Error("Invalid calendar period");
+    if (period.length === 10 && mode !== "monthly") return { from: period, to: period };
+    const prefix = period.slice(0, 7);
+    return { from: prefix + "-01", to: prefix + "-" + new Date(Date.UTC(year, month, 0)).getUTCDate() };
   }
   function nearestIndex(values, point) {
     if (!values.length) return -1;
@@ -62,7 +64,7 @@
       chart.on("click", (event) => {
         if (event.componentType !== "series") return;
         value.index = event.dataIndex;
-        if (kind === "completion") options.openPeriod(value.rows[value.index].period);
+        if (kind === "completion") options.openPeriod(value.rows[value.index].period, value.period);
       });
       chart.on("updateAxisPointer", (event) => {
         const axis = event.axesInfo?.[0];
@@ -92,7 +94,7 @@
           readout.textContent = "";
         } else if (event.key === "Enter" && kind === "completion" && value.index >= 0) {
           event.preventDefault();
-          options.openPeriod(value.rows[value.index].period);
+          options.openPeriod(value.rows[value.index].period, value.period);
         }
       }, { signal: controller.signal });
       if (kind === "transfer") {
@@ -111,7 +113,7 @@
       const row = value.rows[index];
       if (!row) return "";
       if (value.kind === "transfer") return timestamp(row.at) + " · Download " + options.bytes(row.download) + "/s · Upload " + options.bytes(row.upload) + "/s";
-      return row.period + ": " + (row.count == null ? "No historical coverage" : row.count + " completed · " + options.bytes(row.bytes)) + (row.partial ? " · Partial coverage" : "");
+      return (value.period === "monthly" ? row.period.slice(0, 7) : row.period) + ": " + (row.count == null ? "No historical coverage" : row.count + " completed · " + options.bytes(row.bytes)) + (row.partial ? " · Partial coverage" : "");
     }
     function render(target, kind, rows, period) {
       if (!target.clientWidth) return;
@@ -140,7 +142,7 @@
           return index == null ? "" : describe(value, index).split(" · ").join("\n");
         } },
         legend: { show: false, selected: { ...value.selected } },
-        xAxis: kind === "completion" ? { type: "category", data: value.axis, axisLabel: { color: text, formatter: (label) => label.slice(period === "monthly" ? 0 : 5) }, axisTick: { show: false }, axisLine: { lineStyle: { color: line } } } : { type: "time", axisLabel: { color: text, hideOverlap: true, formatter: (stamp) => timestamp(stamp / 1000, false) }, axisLine: { lineStyle: { color: line } }, splitLine: { show: false } },
+        xAxis: kind === "completion" ? { type: "category", data: value.axis, axisLabel: { color: text, formatter: (label) => (period === "monthly" ? label.slice(0, 7) : label.slice(5)) }, axisTick: { show: false }, axisLine: { lineStyle: { color: line } } } : { type: "time", axisLabel: { color: text, hideOverlap: true, formatter: (stamp) => timestamp(stamp / 1000, false) }, axisLine: { lineStyle: { color: line } }, splitLine: { show: false } },
         yAxis: { type: "value", min: 0, minInterval: kind === "completion" ? 1 : undefined, splitNumber: 3, axisLabel: { color: text, formatter: kind === "completion" ? "{value}" : (amount) => options.bytes(amount) + "/s" }, splitLine: { lineStyle: { color: line, type: "dashed" } } },
         dataZoom, series,
         graphic: rows.length ? [] : [{ type: "text", left: "center", top: "middle", style: { text: "Waiting for observations", fill: text } }],

@@ -4,6 +4,9 @@ const { periodBounds, nearestIndex, zoomWindow } = require('../src/swarmtenderr/
 test('day and leap-year month drill down use inclusive calendar dates', () => {
   assert.deepEqual(periodBounds('2024-02'), { from: '2024-02-01', to: '2024-02-29' });
   assert.deepEqual(periodBounds('2026-11-13'), { from: '2026-11-13', to: '2026-11-13' });
+  assert.deepEqual(periodBounds('2026-11-01', 'monthly'), { from: '2026-11-01', to: '2026-11-30' });
+  assert.throws(() => periodBounds('2026-13'));
+  assert.throws(() => periodBounds('2026-02-30'));
   assert.throws(() => periodBounds('javascript:bad'));
 });
 test('irregularly spaced samples select the closest observation', () => {

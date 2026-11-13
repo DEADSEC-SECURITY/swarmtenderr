@@ -599,8 +599,8 @@ function renderQueueSummary(rows) {
 }
 const dashboardCharts = SwarmCharts.create({
   bytes, date, zone,
-  openPeriod(period) {
-    const bounds = SwarmCharts.periodBounds(period);
+  openPeriod(period, chartPeriod) {
+    const bounds = SwarmCharts.periodBounds(period, chartPeriod);
     $("history-from").value = bounds.from;
     $("history-to").value = bounds.to;
     $("history-search").value = "";
