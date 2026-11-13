@@ -45,7 +45,7 @@ jobs:
         run: |
           if existing=$(docker buildx imagetools inspect "elgon2003/swarmtenderr:$RELEASE_VERSION" --format '{{json .Manifest}}' 2>/tmp/swarmtenderr-version-check); then
             python -c 'import json,os,sys; assert json.loads(sys.argv[1])["digest"] == os.environ["ACCEPTED_DIGEST"], "A different artifact already owns this release version"' "$existing"
-          elif ! rg -q 'not found|manifest unknown' /tmp/swarmtenderr-version-check; then
+          elif ! python3 -c 'from pathlib import Path; import sys; message=Path("/tmp/swarmtenderr-version-check").read_text().lower(); sys.exit(0 if any(value in message for value in ("not found", "manifest unknown")) else 1)'; then
             echo 'Could not verify release-version availability; promotion stopped.' >&2
             exit 1
           fi
