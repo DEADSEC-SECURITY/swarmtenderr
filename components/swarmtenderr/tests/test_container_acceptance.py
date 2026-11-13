@@ -89,6 +89,14 @@ def main():
             assert result['database'] == database and not result['stale']
             assert result['snapshot']['demo'] and not result['snapshot']['controls']
             assert len(result['snapshot']['torrents']) == 6
+            ranked = result['snapshot']['torrents']
+            assert all(row['ranking']['schema_version'] == 1 for row in ranked)
+            assert {row['ranking']['rank'] for row in ranked if row['ranking']['rank']} == set(range(1, 6))
+            assert next(row for row in ranked if row['state'] == 'metaDL')['ranking']['score'] is None
+            for row in ranked:
+                score = row['ranking']['score']
+                if score:
+                    assert abs(score['base_seconds'] + sum(f['delta_seconds'] for f in score['factors']) - score['seconds']) < .0001
             stats = request(url, '/api/v1/statistics', opener=opener)
             assert stats['total_completed'] > 0 and len(stats['daily']) == 30 and len(stats['monthly']) == 12
             settings = request(url, '/api/v1/settings', opener=opener)

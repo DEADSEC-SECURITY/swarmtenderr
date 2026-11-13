@@ -277,6 +277,7 @@
                     <option value="stopped">Stopped</option>
                     <option value="complete">Complete</option></select
                   ><select id="torrent-sort" aria-label="Sort torrents">
+                    <option value="rank">Optimizer rank</option>
                     <option value="priority">Queue position</option>
                     <option value="speed">Download speed</option>
                     <option value="progress">Progress</option>
@@ -296,6 +297,7 @@
                       <th>ETA</th>
                       <th>Seeds / peers</th>
                       <th>Queue</th>
+                      <th>Optimizer rank</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -477,6 +479,7 @@
       <div id="detail-state"></div>
       <dl id="detail-values" class="definition-grid"></dl>
       <div id="detail-policy" class="inset" hidden></div>
+      <section id="detail-ranking" class="detail-ranking" aria-label="Ranking explanation"></section>
       <section class="detail-activity"><h3>Recent activity</h3><div id="detail-actions"></div></section>
       <p id="control-note" class="muted"></p>
       <div class="button-row" id="torrent-actions">

@@ -6,7 +6,7 @@ from swarmtenderr_policy.tuning import DEFAULT_POLICY
 import json
 import math
 
-from . import admission
+from . import admission, explanations
 
 MAX_TORRENTS = 25
 MAX_EVENTS = 200
@@ -164,6 +164,8 @@ def snapshot(state, rows, owned, plan, now, *, policy=DEFAULT_POLICY):
                if h.get(field,0)>now]
     state['optimizer'] = {'checked_at':now,'rows':result,'total_candidates':len(eligible),
                           'next_ranking_at':min([state.get('queue_ranked_at',0)+policy.ranking_interval_seconds,*deadlines])}
+    rankings, total = explanations.build(state, rows, owned, plan, now, admission, policy=policy)
+    state['optimizer'].update(rankings=rankings, ranking_total=total)
 
 
 def metrics(state):
