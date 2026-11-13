@@ -656,6 +656,17 @@ function detailsCell(row) {
   td.append(button);
   return td;
 }
+function rankingCell(row) {
+  const cell = node("td", null, "ranking-cell");
+  const ranking = row.ranking;
+  const button = node("button", ranking?.rank ? `#${count(ranking.rank)}` : "—", "rank-button");
+  button.dataset.focusKey = "rank:" + row.hash;
+  button.setAttribute("aria-label", "Explain ranking for " + row.name);
+  button.addEventListener("click", () => openDetails(row));
+  cell.append(button, node("small", state.status?.snapshot?.optimizer?.stale ? "Stale observation" :
+    ranking?.decision || (row.progress >= 1 ? "Complete" : "Not reported")));
+  return cell;
+}
 function renderActive(rows) {
   const active = rows
       .filter((r) => r.progress < 1 && r.download_speed > 0)
@@ -704,7 +715,9 @@ function renderTorrents(rows) {
   );
   const sort = $("torrent-sort").value;
   filtered.sort((a, b) =>
-    sort === "name"
+    sort === "rank"
+      ? (a.ranking?.rank ?? 1e9) - (b.ranking?.rank ?? 1e9) || a.priority - b.priority || a.name.localeCompare(b.name)
+      : sort === "name"
       ? a.name.localeCompare(b.name)
       : sort === "speed"
         ? b.download_speed - a.download_speed
@@ -735,6 +748,7 @@ function renderTorrents(rows) {
       node("td", row.progress >= 1 ? "Complete" : eta(row.eta_seconds)),
       node("td", `${row.seeds} / ${row.peers}`),
       node("td", row.priority < 0 ? "—" : row.priority),
+      rankingCell(row),
       detailsCell(row),
     );
     fragment.append(tr);
@@ -857,10 +871,11 @@ function renderDetails() {
       : []),
   ]);
   const policy = state.status?.snapshot?.optimizer?.connected;
-  $("detail-policy").hidden = !policy;
+  $("detail-policy").hidden = !policy || !!row.ranking;
   $("detail-policy").textContent = policy
     ? `${row.decision}: ${row.reason}`
     : "";
+  renderRanking(row);
   const recentActions = state.activity.actions
     .filter((action) => action.torrent === row.hash)
     .slice(0, 5);
@@ -902,6 +917,79 @@ function renderDetails() {
   document
     .querySelectorAll("[data-action]")
     .forEach((b) => (b.disabled = !!reason));
+}
+function renderRanking(row) {
+  const target = $("detail-ranking"), ranking = row.ranking;
+  const metadataOpen = target.querySelector(".metadata-history")?.open;
+  target.replaceChildren(node("h3", "Ranking & priority"));
+  if (!ranking) {
+    target.append(node("p", row.progress >= 1 ? "This download is complete and outside automatic download ranking." :
+      "No ranking explanation is available for this torrent in the current observation.", "muted"));
+    return;
+  }
+  const engine = state.status?.snapshot?.optimizer;
+  const note = state.status?.demo ? "Demo recommendation · no client changes" :
+    engine?.owner === "swarmtenderr" && engine.mode === "observe" ? "Observe mode · recommendations only" :
+    "Optimizer recommendation · native queue position is shown separately";
+  target.append(node("p", note, "muted"));
+  if (engine?.stale || Date.now() / 1000 - ranking.observed_at > 120)
+    target.append(node("p", "Stale observation. These are the last recorded reasons; waiting for the guard to report again.", "ranking-warning"));
+  const summary = node("dl", null, "definition-grid");
+  definitions(summary, [
+    ["Plan rank", ranking.rank ? `#${count(ranking.rank)} of ${count(ranking.candidate_count)}` : "Outside the eligible plan"],
+    ["Completion rank", ranking.score_rank ? `#${count(ranking.score_rank)} before trial reservations` : "Not scored"],
+    ["Selection", ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
+    ["Policy", ranking.policy], ["Evaluated", date(ranking.observed_at, true)],
+  ]);
+  target.append(summary);
+  if (ranking.selection_reason) target.append(node("p", ranking.selection_reason, "ranking-selection"));
+  target.append(node("h4", ranking.selected_rank ? "Selection conditions" : row.state === "queuedDL" ? "Why it is queued" : "Priority conditions"));
+  const reasons = node("ul", null, "ranking-reasons");
+  for (const blocker of ranking.blockers) {
+    const item = node("li");
+    item.append(node("strong", blocker.label), node("p", blocker.detail));
+    if (blocker.until > Date.now() / 1000) item.append(node("small", "Eligible after " + date(blocker.until, true)));
+    reasons.append(item);
+  }
+  if (!ranking.blockers.length) reasons.append(node("li", ranking.reason));
+  else if (!ranking.selected_rank && ranking.rank) reasons.append(node("li", ranking.reason));
+  target.append(reasons);
+  if (ranking.score) {
+    const score = ranking.score, format = (value) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value) + " s";
+    target.append(node("h4", "Completion score · lower ranks first"), node("p",
+      "Remaining bytes ÷ estimated speed, then divided by the boosts below. This weighted cost is not a wall-clock ETA. Complete-source and proven-speed tiers take precedence.", "muted"));
+    const table = node("table", null, "score-breakdown"), body = node("tbody");
+    const add = (label, value, kind) => { const line = node("tr"); line.append(node("th", label), node("td", value, kind)); body.append(line); };
+    add("Base transfer estimate", format(score.base_seconds));
+    for (const factor of score.factors) add(`${factor.label} · ÷${factor.multiplier.toFixed(2)}`,
+      (factor.delta_seconds < 0 ? "−" : factor.delta_seconds > 0 ? "+" : "") + format(Math.abs(factor.delta_seconds)), factor.delta_seconds < 0 ? "score-benefit" : "muted");
+    add("Final weighted score", format(score.seconds));
+    table.append(body); target.append(table);
+    const evidence = node("dl", null, "definition-grid ranking-evidence");
+    definitions(evidence, [["Speed evidence", score.source], ["Estimated speed", bytes(score.estimated_speed) + "/s"],
+      ["Remaining work", bytes(score.remaining_bytes)], ["Evidence tier", score.proven ? "Useful measured throughput" : "Untested / below useful speed"],
+      ["Complete source", score.viable ? "Confirmed by current evidence" : "Not confirmed"]]);
+    target.append(evidence, node("p", "More remaining work or a lower speed raises the base cost. Age, completion and remaining-size boosts reduce it. Seeders inform the speed estimate; popularity and peers choose discovery trials, not extra score points.", "muted"));
+  } else if (!ranking.metadata.known) target.append(node("p", "No completion score until metadata supplies the remaining size. A guessed score would be misleading.", "muted"));
+  const metadata = ranking.metadata;
+  const metadataSection = node("details", null, "metadata-history");
+  metadataSection.open = metadataOpen ?? !metadata.known;
+  metadataSection.append(node("summary", "Metadata & discovery"));
+  const history = node("dl", null, "definition-grid");
+  const outcomes = {metadata: "Metadata acquired", no_metadata: "Window ended without metadata", unobserved: "Insufficient continuous observation"};
+  definitions(history, [["Metadata", metadata.known ? "Available" : "Not acquired"],
+    ["Observed attempts", count(metadata.attempts)], ["Acquired / no metadata", `${count(metadata.successes)} / ${count(metadata.failures)}`],
+    ["Unconfirmed windows", count(metadata.unobserved)],
+    ["Current observation", metadata.active ? `Active · ${count(Math.round(metadata.active_seconds))} seconds observed` : "Not active"],
+    ["Last result", outcomes[metadata.last_outcome] || "No completed attempt recorded"],
+    ...(metadata.last_at ? [["Last result at", date(metadata.last_at, true)]] : []),
+    ...(metadata.trial_until > Date.now() / 1000 ? [["Trial ends", date(metadata.trial_until, true)]] : []),
+    ...(metadata.retry_at > Date.now() / 1000 ? [["Metadata retry", date(metadata.retry_at, true)]] : []),
+    ...(metadata.last_probe_at ? [["Last probe began", date(metadata.last_probe_at, true)]] : []),
+    ["Reported seeders / peers", `${count(ranking.signals.seeders)} / ${count(ranking.signals.known_peers)}`],
+  ]);
+  metadataSection.append(history, node("p", `Observed history since ${date(metadata.tracking_since, true)}. Earlier attempts are not reconstructed. Zero means no attempt observed during tracking.`, "muted"));
+  target.append(metadataSection);
 }
 document.querySelectorAll("[data-action]").forEach((button) =>
   button.addEventListener("click", async () => {
@@ -1319,7 +1407,9 @@ function settingsForm(key) {
         const details = node("details", null, "tuning-group");
         details.open = ["Capacity", "Protection"].includes(group);
         details.append(node("summary", group));
-        groups.set(group, details); form.append(details);
+        const fields = node("div", null, "tuning-fields");
+        details.append(fields);
+        groups.set(group, fields); form.append(details);
       }
       groups.get(group).append(wrapper);
     } else form.append(wrapper);

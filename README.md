@@ -113,6 +113,15 @@ and [release engineering](docs/releases.md) for the build-once candidate and
 exact-digest promotion pipeline. The [OpenAPI contract](components/swarmtenderr/config/openapi.json)
 and [permissions contract](components/swarmtenderr/config/contracts.md) describe the API.
 
+## Ranking insight
+
+The torrent list includes optimizer rank and sorting. Inspect a torrent for plan
+and completion rank, the exact weighted score and its contributions, capacity and
+cooldown gates, and observed metadata attempts. Native queue position remains
+separate. Unknown metadata has no invented completion score. Attempt counters
+begin when observation is installed; they are not lifetime history. See
+[ranking explanations](docs/ranking.md) for the contract and limits.
+
 ## Develop and test
 
 ```sh

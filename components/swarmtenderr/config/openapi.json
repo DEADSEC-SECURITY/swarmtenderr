@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swarmtenderr API",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Single-installation administration with cookie sessions, role checks, CSRF, durable completion records and write-only integration secrets. WebSocket /api/v1/live uses the same session cookie and exact Origin, sends snapshot and heartbeat frames, and closes 4401 after revocation."
   },
   "servers": [
@@ -3212,7 +3212,28 @@
               "object",
               "null"
             ],
-            "additionalProperties": true
+            "additionalProperties": true,
+            "properties": {
+              "torrents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ranking": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TorrentRanking"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
           },
           "stale": {
             "type": "boolean"
@@ -3527,6 +3548,280 @@
           "requested_slots",
           "applied_slots"
         ]
+      },
+      "TorrentRanking": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "torrent": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "selection_reason": {
+            "type": "string"
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "score_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "selected_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "observed_at": {
+            "type": "number",
+            "minimum": 0
+          },
+          "candidate_count": {
+            "type": "number",
+            "minimum": 0
+          },
+          "next_ranking_at": {
+            "type": "number",
+            "minimum": 0
+          },
+          "blockers": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "code",
+                "label",
+                "detail",
+                "until"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "score": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "base_seconds": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "seconds": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "estimated_speed": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "remaining_bytes": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "viable": {
+                    "type": "boolean"
+                  },
+                  "proven": {
+                    "type": "boolean"
+                  },
+                  "factors": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "multiplier": {
+                          "type": "number",
+                          "minimum": 1
+                        },
+                        "delta_seconds": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "label",
+                        "multiplier",
+                        "delta_seconds"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "base_seconds",
+                  "seconds",
+                  "estimated_speed",
+                  "remaining_bytes",
+                  "source",
+                  "viable",
+                  "proven",
+                  "factors"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "signals": {
+            "type": "object",
+            "properties": {
+              "seeders": {
+                "type": "number",
+                "minimum": 0
+              },
+              "known_peers": {
+                "type": "number",
+                "minimum": 0
+              },
+              "popularity": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "seeders",
+              "known_peers",
+              "popularity"
+            ],
+            "additionalProperties": false
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "tracking_since": {
+                "type": "number",
+                "minimum": 0
+              },
+              "attempts": {
+                "type": "number",
+                "minimum": 0
+              },
+              "successes": {
+                "type": "number",
+                "minimum": 0
+              },
+              "failures": {
+                "type": "number",
+                "minimum": 0
+              },
+              "unobserved": {
+                "type": "number",
+                "minimum": 0
+              },
+              "active_seconds": {
+                "type": "number",
+                "minimum": 0
+              },
+              "last_at": {
+                "type": "number",
+                "minimum": 0
+              },
+              "retry_at": {
+                "type": "number",
+                "minimum": 0
+              },
+              "trial_until": {
+                "type": "number",
+                "minimum": 0
+              },
+              "last_probe_at": {
+                "type": "number",
+                "minimum": 0
+              },
+              "known": {
+                "type": "boolean"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "last_outcome": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tracking_since",
+              "attempts",
+              "successes",
+              "failures",
+              "unobserved",
+              "active_seconds",
+              "last_at",
+              "retry_at",
+              "trial_until",
+              "last_probe_at",
+              "known",
+              "active",
+              "last_outcome"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "schema_version",
+          "torrent",
+          "policy",
+          "decision",
+          "reason",
+          "selection_reason",
+          "rank",
+          "score_rank",
+          "selected_rank",
+          "observed_at",
+          "candidate_count",
+          "next_ranking_at",
+          "blockers",
+          "score",
+          "signals",
+          "metadata"
+        ],
+        "additionalProperties": false
       }
     }
   }

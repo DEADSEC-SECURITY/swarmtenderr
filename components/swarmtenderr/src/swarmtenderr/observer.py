@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import threading
 import time
+from swarmtenderr_policy.explanations import sanitize
 
 
 def number(value, default=0):
@@ -38,6 +39,8 @@ def optimizer(path):
                   for event in state.get("optimizer_events", [])[-50:]]
         return {"connected": True, "stale": stale, "observed_at": checked,
                 "rows": rows, "capacity": capacity, "events": events,
+                "rankings": sanitize(snapshot.get("rankings", [])),
+                "ranking_total": number(snapshot.get("ranking_total")),
                 "settings_revision": number(state.get("optimizer_settings_revision"))}
     except (OSError, ValueError, TypeError, AttributeError):
         return {"connected": False, "reason": "Optimizer snapshot unavailable", "rows": [], "events": []}
@@ -45,10 +48,12 @@ def optimizer(path):
 
 def projection(rows, engine):
     decisions = {row["torrent"]: row for row in engine.get("rows", [])}
+    rankings = {row["torrent"]: row for row in sanitize(engine.get("rankings", []))}
     result = []
     for row in rows:
         identity = text(row.get("hash"), 64)
-        decision = decisions.get(identity, {})
+        explanation = rankings.get(identity)
+        decision = explanation or decisions.get(identity, {})
         progress = max(0, min(1, number(row.get("progress"))))
         state = text(row.get("state"), 32)
         tags = set(str(row.get("tags", "")).replace(" ", "").split(","))
@@ -64,6 +69,7 @@ def projection(rows, engine):
             "size": max(0, number(row.get("size"))), "seeds": max(0, number(row.get("num_seeds"))),
             "peers": max(0, number(row.get("num_leechs"))), "priority": number(row.get("priority"), -1),
             "eta_seconds": eta, "protected": protected,
+            "ranking": explanation,
             "trial_until": number(decision.get("trial_until")), "cooldown_until": number(decision.get("cooldown_until")),
             "estimate_source": text(decision.get("estimate_source"), 60),
             "decision": decision.get("decision", "Protected" if protected else "Native queue"),
@@ -94,6 +100,7 @@ class Observer:
         from .controller import Controller
         self.controller = Controller(settings, store)
         self.last_error = ""
+        self.demo_policy = {}
         self.stop = threading.Event()
         self.lock = threading.Lock()
 
@@ -117,15 +124,27 @@ class Observer:
             if self.settings.optimizer_state:
                 engine = optimizer(self.settings.optimizer_state)
             elif self.settings.demo:
-                engine = {"connected": False, "reason": "Demo queue; automatic optimization is disabled", "rows": [], "events": []}
+                from swarmtenderr_policy import admission, explanations
+                from swarmtenderr_policy.tuning import DEFAULT_POLICY
+                now = time.time()
+                sample = {row['hash']: row for row in rows}
+                owned = {key: {} for key, row in sample.items() if row.get('progress', 1) < 1}
+                admission.observe(sample, self.demo_policy.setdefault('history', {}), now)
+                plan = admission.queue_plan(sample, owned, self.demo_policy['history'], now)
+                rankings, total = explanations.build(self.demo_policy, sample, owned, plan, now, admission, policy=DEFAULT_POLICY)
+                engine = {"connected": True, "owner": "demo", "mode": "observe", "stale": False,
+                    "reason": "Demo recommendations; automatic optimization is disabled", "rows": [], "events": [],
+                    "observed_at": now, "rankings": rankings, "ranking_total": total}
             else:
                 try:
                     engine = self.controller.poll(self.get_client(), rows, config)
                 except Exception:
                     engine = {"connected": False, "reason": "Policy evaluation failed; check native queue settings, capacity and pending requests in Activity", "rows": [], "events": []}
             torrents = projection(rows, engine)
+            public_engine = {key: value for key, value in engine.items() if key != 'rankings'}
+            public_engine['ranking_count'] = len(engine.get('rankings', []))
             data = {"observed_at": time.time(), "demo": self.settings.demo,
-                    "controls": config["controls_enabled"], "optimizer": engine, "torrents": torrents,
+                    "controls": config["controls_enabled"], "optimizer": public_engine, "torrents": torrents,
                     "download_speed": sum(row["download_speed"] for row in torrents),
                     "upload_speed": sum(row["upload_speed"] for row in torrents)}
             self.store.snapshot(data, rows, config["retention_days"], config.get("qbit_url", ""))
