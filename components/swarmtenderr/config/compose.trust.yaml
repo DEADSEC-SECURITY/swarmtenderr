@@ -1,0 +1,7 @@
+# A public CA bundle for an internal identity provider or qBittorrent HTTPS.
+services:
+  swarmtenderr:
+    environment:
+      SSL_CERT_FILE: /run/certs/lab-ca-bundle.pem
+    volumes:
+      - ${SWARMTENDERR_CA_BUNDLE_PATH:?Set the public CA bundle path}:/run/certs/lab-ca-bundle.pem:ro

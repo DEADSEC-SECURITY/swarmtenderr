@@ -2,100 +2,1743 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swarmtenderr API",
-    "version": "0.1.0",
-    "description": "Read-only monitoring and explicitly enabled, authenticated single-torrent controls. qBittorrent 5 required."
+    "version": "0.2.0",
+    "description": "Single-installation administration with cookie sessions, role checks, CSRF, durable completion records and write-only integration secrets. WebSocket /api/v1/live uses the same session cookie and exact Origin, sends snapshot and heartbeat frames, and closes 4401 after revocation."
   },
   "servers": [
     {
-      "url": "http://localhost:8787"
+      "url": "/"
     }
   ],
   "security": [
     {
-      "dashboardAuth": []
+      "SessionCookie": []
     }
   ],
-  "components": {
-    "securitySchemes": {
-      "dashboardAuth": {
-        "type": "http",
-        "scheme": "basic"
-      }
-    },
-    "schemas": {
-      "Action": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "action"
-        ],
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "pause",
-              "resume",
-              "prioritize",
-              "reannounce"
-            ]
-          }
-        }
-      }
-    }
-  },
   "paths": {
     "/healthz": {
       "get": {
-        "security": [],
-        "summary": "Process liveness, independent of upstream freshness",
+        "operationId": "get__healthz",
+        "summary": "Process liveness",
+        "x-minimum-role": "public",
         "responses": {
           "200": {
-            "description": "Process running"
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "get__readyz",
+        "summary": "Database readiness",
+        "x-minimum-role": "public",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/options": {
+      "get": {
+        "operationId": "get__api_v1_auth_options",
+        "summary": "Public sign-in choices",
+        "x-minimum-role": "public",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "demo": {
+                      "type": "boolean"
+                    },
+                    "sso_enabled": {
+                      "type": "boolean"
+                    },
+                    "sso_label": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "demo",
+                    "sso_enabled",
+                    "sso_label",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "post__api_v1_auth_login",
+        "summary": "Sign in using a local account",
+        "x-minimum-role": "public",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          }
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "get__api_v1_me",
+        "summary": "Current account and CSRF token",
+        "x-minimum-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "post__api_v1_auth_logout",
+        "summary": "Revoke the current session",
+        "x-minimum-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/account/password": {
+      "post": {
+        "operationId": "post__api_v1_account_password",
+        "summary": "Change own password and revoke sessions",
+        "x-minimum-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "current_password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "maxLength": 4096,
+                    "description": "Empty input preserves the configured credential; never returned."
+                  },
+                  "new_password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "maxLength": 4096,
+                    "description": "Empty input preserves the configured credential; never returned."
+                  }
+                },
+                "required": [
+                  "current_password",
+                  "new_password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/v1/status": {
       "get": {
-        "summary": "Last successful sanitized observation, staleness, database kind and package version",
+        "operationId": "get__api_v1_status",
+        "summary": "Read status",
+        "x-minimum-role": "viewer",
         "responses": {
           "200": {
-            "description": "Snapshot may be null before first observation; stale data is explicitly marked"
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Authentication required"
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Database unavailable"
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/statistics": {
+      "get": {
+        "operationId": "get__api_v1_statistics",
+        "summary": "Read statistics",
+        "x-minimum-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statistics"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/v1/activity": {
       "get": {
-        "summary": "Latest 100 action records and 60 observed aggregate rate samples",
+        "operationId": "get__api_v1_activity",
+        "summary": "Read activity",
+        "x-minimum-role": "viewer",
         "responses": {
           "200": {
-            "description": "Persistent activity and samples"
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activity"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Authentication required"
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/api/v1/torrents/{hash}/actions": {
-      "post": {
-        "summary": "Request a single-torrent action; acceptance is not state confirmation",
-        "description": "Requires exact dashboard Origin, JSON, explicit controls opt-in, and a fresh protected-torrent check. External optimizer and demo modes reject all mutations. No deletion, force-start, preferences or file-priority APIs. Do not automatically retry an uncertain result.",
+    "/api/v1/completions": {
+      "get": {
+        "operationId": "get__api_v1_completions",
+        "summary": "Filtered, bounded completion history",
+        "x-minimum-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Completions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
         "parameters": [
           {
-            "name": "hash",
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "uncategorized",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "Select uncategorized completions; takes precedence over category."
+          }
+        ]
+      }
+    },
+    "/api/v1/completions.csv": {
+      "get": {
+        "operationId": "get__api_v1_completions_csv",
+        "summary": "Export up to 10,000 matching completions; spreadsheet formulas escaped",
+        "x-minimum-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "CSV file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "uncategorized",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "Select uncategorized completions; takes precedence over category."
+          }
+        ]
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "get__api_v1_settings",
+        "summary": "Effective values, source, locks and secret-presence flags",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch__api_v1_settings",
+        "summary": "Atomically save unlocked settings",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "changes": {
+                    "$ref": "#/components/schemas/SettingsChanges"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "changes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/reset": {
+      "post": {
+        "operationId": "post__api_v1_settings_reset",
+        "summary": "Reset unlocked fields to deployment defaults",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "keys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "revision",
+                  "keys"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/test-connection": {
+      "post": {
+        "operationId": "post__api_v1_settings_test-connection",
+        "summary": "Test transient connection values without saving them",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "qbit_url": {
+                    "type": "string"
+                  },
+                  "qbit_username": {
+                    "type": "string"
+                  },
+                  "qbit_password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "maxLength": 4096,
+                    "description": "Empty input preserves the configured credential; never returned."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/test-sso": {
+      "post": {
+        "operationId": "post__api_v1_settings_test-sso",
+        "summary": "Test transient connection values without saving them",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sso_issuer": {
+                    "type": "string"
+                  },
+                  "sso_client_id": {
+                    "type": "string"
+                  },
+                  "sso_client_secret": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "maxLength": 4096,
+                    "description": "Empty input preserves the configured credential; never returned."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "operationId": "get__api_v1_users",
+        "summary": "List installation accounts",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      }
+                    }
+                  },
+                  "required": [
+                    "users"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "post__api_v1_users",
+        "summary": "Create a local account",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      }
+                    }
+                  },
+                  "required": [
+                    "users"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "viewer",
+                      "operator",
+                      "admin"
+                    ]
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "maxLength": 4096,
+                    "description": "Empty input preserves the configured credential; never returned."
+                  }
+                },
+                "required": [
+                  "username",
+                  "display_name",
+                  "role",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}": {
+      "patch": {
+        "operationId": "patch__api_v1_users_id",
+        "summary": "Edit role, name or activation and revoke affected sessions",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      }
+                    }
+                  },
+                  "required": [
+                    "users"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "viewer",
+                      "operator",
+                      "admin"
+                    ]
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false,
+                "minProperties": 1
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "pattern": "^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$"
+              "type": "string"
             }
           },
           {
@@ -104,56 +1747,1209 @@
             "required": true,
             "schema": {
               "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        ],
+        ]
+      }
+    },
+    "/api/v1/users/{id}/password": {
+      "post": {
+        "operationId": "post__api_v1_users_id_password",
+        "summary": "Reset a local account password and revoke its sessions",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Action"
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "maxLength": 4096,
+                    "description": "Empty input preserves the configured credential; never returned."
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "additionalProperties": false
               }
             }
           }
         },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/torrents/{hash}/actions": {
+      "post": {
+        "operationId": "post__api_v1_torrents_hash_actions",
+        "summary": "Request a permitted single-torrent mutation",
+        "x-minimum-role": "operator",
         "responses": {
           "202": {
-            "description": "qBittorrent accepted request; observe next poll for result"
-          },
-          "400": {
-            "description": "Invalid body or action"
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "const": "accepted"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "outcome"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           },
           "401": {
-            "description": "Authentication required"
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "Observation mode or Origin mismatch"
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "409": {
-            "description": "Missing or protected torrent"
-          },
-          "502": {
-            "description": "Result uncertain; inspect before retry"
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Persistence unavailable; no action is attempted before audit begins"
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "pause",
+                      "resume",
+                      "prioritize",
+                      "reannounce"
+                    ]
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/auth/oidc/login": {
+      "get": {
+        "operationId": "oidc_login",
+        "summary": "OIDC login",
+        "security": [],
+        "responses": {
+          "302": {
+            "description": "Provider authorization redirect"
+          },
+          "303": {
+            "description": "Application redirect; errors use fixed public error codes"
           }
         }
       }
     },
-    "/api/v1/live": {
+    "/auth/oidc/callback": {
       "get": {
-        "summary": "Same-origin authenticated WebSocket snapshot stream",
-        "description": "Upgrade to WebSocket with the browser-cached Basic credentials and exact dashboard Origin. Server emits type=snapshot with status and activity on each observation change; type=heartbeat during idle periods. Reconnect resends the latest complete snapshot. No client messages or query-string credentials are accepted.",
+        "operationId": "oidc_callback",
+        "summary": "OIDC callback",
+        "security": [],
         "responses": {
-          "101": {
-            "description": "WebSocket stream established"
+          "302": {
+            "description": "Provider authorization redirect"
           },
-          "403": {
-            "description": "Authentication or Origin rejected"
+          "303": {
+            "description": "Application redirect; errors use fixed public error codes"
           }
         }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "swarmtenderr_session"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "viewer",
+              "operator",
+              "admin"
+            ]
+          },
+          "active": {
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "created": {
+            "type": "number"
+          },
+          "last_login": {
+            "type": "number"
+          },
+          "provider": {
+            "enum": [
+              "local",
+              "sso"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "active",
+          "created",
+          "last_login",
+          "provider"
+        ],
+        "additionalProperties": false
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "csrf": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "csrf"
+        ],
+        "additionalProperties": false
+      },
+      "SettingsChanges": {
+        "type": "object",
+        "properties": {
+          "qbit_url": {
+            "type": "string"
+          },
+          "qbit_username": {
+            "type": "string"
+          },
+          "poll_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "retention_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "controls_enabled": {
+            "type": "boolean"
+          },
+          "policy_mode": {
+            "enum": [
+              "observe",
+              "enforce"
+            ]
+          },
+          "download_slots": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "managed_categories": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "excluded_tags": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "minimum_free_gib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "work_budget_gib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "library_reserve_gib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "sso_enabled": {
+            "type": "boolean"
+          },
+          "sso_issuer": {
+            "type": "string"
+          },
+          "sso_client_id": {
+            "type": "string"
+          },
+          "sso_label": {
+            "type": "string"
+          },
+          "sso_allowed_groups": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "sso_default_role": {
+            "enum": [
+              "viewer",
+              "operator"
+            ]
+          },
+          "qbit_password": {
+            "type": "string",
+            "writeOnly": true,
+            "maxLength": 4096,
+            "description": "Empty input preserves the configured credential; never returned."
+          },
+          "sso_client_secret": {
+            "type": "string",
+            "writeOnly": true,
+            "maxLength": 4096,
+            "description": "Empty input preserves the configured credential; never returned."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "values": {
+            "type": "object",
+            "properties": {
+              "qbit_url": {
+                "type": "string"
+              },
+              "qbit_username": {
+                "type": "string"
+              },
+              "poll_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600
+              },
+              "retention_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 365
+              },
+              "timezone": {
+                "type": "string"
+              },
+              "controls_enabled": {
+                "type": "boolean"
+              },
+              "policy_mode": {
+                "enum": [
+                  "observe",
+                  "enforce"
+                ]
+              },
+              "download_slots": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "managed_categories": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              },
+              "excluded_tags": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              },
+              "minimum_free_gib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "work_budget_gib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "library_reserve_gib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "sso_enabled": {
+                "type": "boolean"
+              },
+              "sso_issuer": {
+                "type": "string"
+              },
+              "sso_client_id": {
+                "type": "string"
+              },
+              "sso_label": {
+                "type": "string"
+              },
+              "sso_allowed_groups": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              },
+              "sso_default_role": {
+                "enum": [
+                  "viewer",
+                  "operator"
+                ]
+              }
+            },
+            "required": [
+              "qbit_url",
+              "qbit_username",
+              "poll_seconds",
+              "retention_days",
+              "timezone",
+              "controls_enabled",
+              "policy_mode",
+              "download_slots",
+              "managed_categories",
+              "excluded_tags",
+              "minimum_free_gib",
+              "work_budget_gib",
+              "library_reserve_gib",
+              "sso_enabled",
+              "sso_issuer",
+              "sso_client_id",
+              "sso_label",
+              "sso_allowed_groups",
+              "sso_default_role"
+            ],
+            "additionalProperties": false
+          },
+          "secrets": {
+            "type": "object",
+            "properties": {
+              "qbit_password": {
+                "type": "boolean"
+              },
+              "sso_client_secret": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "qbit_password",
+              "sso_client_secret"
+            ],
+            "additionalProperties": false
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "ui",
+                "deployment"
+              ]
+            }
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "deployment": {
+            "type": "object",
+            "properties": {
+              "database": {
+                "enum": [
+                  "sqlite",
+                  "postgresql"
+                ]
+              },
+              "public_url": {
+                "type": "string"
+              },
+              "external_optimizer": {
+                "type": "boolean"
+              },
+              "demo": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "database",
+              "public_url",
+              "external_optimizer",
+              "demo"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "revision",
+          "values",
+          "secrets",
+          "sources",
+          "locked",
+          "deployment"
+        ],
+        "additionalProperties": false
+      },
+      "Completion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "client": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "added": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "observed": {
+            "type": "number"
+          },
+          "source": {
+            "enum": [
+              "backfill",
+              "observed",
+              "demo"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "client",
+          "hash",
+          "name",
+          "category",
+          "added",
+          "completed",
+          "bytes",
+          "observed",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "Completions": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Completion"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "limit",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "Statistics": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string"
+          },
+          "today": {
+            "type": "object",
+            "properties": {
+              "period": {
+                "type": "string",
+                "format": "date"
+              },
+              "count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "bytes": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "partial": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "period",
+              "count",
+              "bytes",
+              "partial"
+            ],
+            "additionalProperties": false
+          },
+          "month": {
+            "type": "object",
+            "properties": {
+              "period": {
+                "type": "string",
+                "format": "date"
+              },
+              "count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "bytes": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "partial": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "period",
+              "count",
+              "bytes",
+              "partial"
+            ],
+            "additionalProperties": false
+          },
+          "total_completed": {
+            "type": "integer"
+          },
+          "total_bytes": {
+            "type": "number"
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "bytes": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "partial": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "period",
+                "count",
+                "bytes",
+                "partial"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "monthly": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "bytes": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "partial": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "period",
+                "count",
+                "bytes",
+                "partial"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "bytes": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "category",
+                "count",
+                "bytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "since": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "historical_complete": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "since",
+              "historical_complete",
+              "note"
+            ],
+            "additionalProperties": false
+          },
+          "comparison": {
+            "type": "object",
+            "required": [
+              "previous_day",
+              "previous_month"
+            ],
+            "properties": {
+              "previous_day": {
+                "type": "object",
+                "properties": {
+                  "period": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "count": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "bytes": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "partial": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "period",
+                  "count",
+                  "bytes",
+                  "partial"
+                ],
+                "additionalProperties": false
+              },
+              "previous_month": {
+                "type": "object",
+                "properties": {
+                  "period": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "count": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "bytes": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "partial": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "period",
+                  "count",
+                  "bytes",
+                  "partial"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "timezone",
+          "today",
+          "month",
+          "total_completed",
+          "total_bytes",
+          "daily",
+          "monthly",
+          "categories",
+          "coverage",
+          "comparison"
+        ],
+        "additionalProperties": false
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "snapshot": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "database": {
+            "enum": [
+              "sqlite",
+              "postgresql"
+            ]
+          },
+          "configuration_revision": {
+            "type": "integer"
+          },
+          "demo": {
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "poll_seconds": {
+            "type": "integer"
+          },
+          "completion_revision": {
+            "type": "integer"
+          },
+          "activity_revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "snapshot",
+          "stale",
+          "error",
+          "database",
+          "configuration_revision",
+          "demo",
+          "user",
+          "timezone",
+          "poll_seconds",
+          "completion_revision",
+          "activity_revision"
+        ],
+        "additionalProperties": false
+      },
+      "Activity": {
+        "type": "object",
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "number"
+                },
+                "torrent": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "enum": [
+                    "pending",
+                    "accepted",
+                    "confirmed",
+                    "uncertain",
+                    "rejected"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "at",
+                "torrent",
+                "action",
+                "outcome"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "number"
+                },
+                "download": {
+                  "type": "number"
+                },
+                "upload": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "at",
+                "download",
+                "upload"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "audit": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "number"
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "event": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "id",
+                "at",
+                "actor",
+                "event",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "actions",
+          "samples",
+          "audit"
+        ],
+        "additionalProperties": false
       }
     }
   }

@@ -1,0 +1,7 @@
+# Optional separate import-destination capacity probe; never grants media writes.
+services:
+  swarmtenderr:
+    environment:
+      SWARMTENDERR_LIBRARY_PROBE_PATH: /probes/library
+    volumes:
+      - ${SWARMTENDERR_LIBRARY_PATH:?Set the import filesystem directory}:/probes/library:ro

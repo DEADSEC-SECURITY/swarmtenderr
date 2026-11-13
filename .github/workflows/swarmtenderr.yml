@@ -1,96 +1,118 @@
-name: Swarmtenderr CI and Docker Hub release
+name: Swarmtenderr verify and candidate
 
 on:
   pull_request:
-    paths: [components/swarmtenderr/**, modules/swarmtenderr/**, .github/workflows/swarmtenderr.yml]
   push:
     branches: [main]
-    tags: [swarmtenderr-v*]
-    paths: [components/swarmtenderr/**, modules/swarmtenderr/**, .github/workflows/swarmtenderr.yml]
   workflow_dispatch:
+    inputs:
+      publish_candidate:
+        description: Publish the exact verified OCI artifacts as a release candidate
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   group: swarmtenderr-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: true
 
 jobs:
   verify:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        architecture: [amd64, arm64]
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13.13'
-      - name: Check JavaScript syntax
-        run: node --check components/swarmtenderr/src/swarmtenderr/static/app.js
-      - name: Validate the API contract
-        run: python -m json.tool components/swarmtenderr/config/openapi.json > /dev/null
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build the candidate image
-        run: docker buildx build --platform linux/${{ matrix.architecture }} --load --tag swarmtenderr-ci components/swarmtenderr
-      - name: Test the installed image, isolated qBittorrent, SQLite and PostgreSQL
-        run: python -B components/swarmtenderr/tests/test_container_acceptance.py swarmtenderr-ci
-      - name: Check Terraform formatting and plan contracts with mocked Docker
+      - name: Validate frontend syntax and the OpenAPI schema
+        run: |
+          node --check components/swarmtenderr/src/swarmtenderr/static/app.js
+          pip install openapi-spec-validator==0.9.0
+          python -m openapi_spec_validator components/swarmtenderr/config/openapi.json
+      - uses: docker/setup-docker-action@3f1ab1ab0e29231562e4db4ca600c1a49653bac6
+        with:
+          daemon-config: |
+            {"features":{"containerd-snapshotter":true}}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Build once with source identity, SBOM and provenance
+        run: |
+          VERSION=$(python -c "import tomllib;print(tomllib.load(open('components/swarmtenderr/pyproject.toml','rb'))['project']['version'])")
+          docker buildx build --platform linux/${{ matrix.architecture }} \
+            --tag swarmtenderr-ci:tested --provenance=mode=max --sbom=true \
+            --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
+            --label org.opencontainers.image.revision=${{ github.sha }} \
+            --label org.opencontainers.image.version="$VERSION" \
+            --output type=oci,dest=/tmp/swarmtenderr-${{ matrix.architecture }}.tar components/swarmtenderr
+          docker load --input /tmp/swarmtenderr-${{ matrix.architecture }}.tar
+      - name: Test the installed artifact on SQLite and PostgreSQL
+        run: python -B components/swarmtenderr/tests/test_container_acceptance.py swarmtenderr-ci:tested
+      - name: Validate Terraform and deployment contracts
         run: |
           docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 fmt -check -recursive
           docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 init -backend=false -input=false -lockfile=readonly
           docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 validate
           docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 test
+      - name: Scan the installed image for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          version: v0.76.2
+          image-ref: swarmtenderr-ci:tested
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Save accepted OCI artifact without rebuilding
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: swarmtenderr-${{ matrix.architecture }}
+          path: /tmp/swarmtenderr-${{ matrix.architecture }}.tar
+          retention-days: 14
+          compression-level: 0
 
-  publish:
-    if: startsWith(github.ref, 'refs/tags/swarmtenderr-v')
+  candidate:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_candidate
     needs: verify
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          persist-credentials: false
-      - name: Verify the release tag matches the package
-        id: version
-        run: |
-          python3 - <<'PY'
-          import os, re, tomllib
-          version = tomllib.load(open('components/swarmtenderr/pyproject.toml', 'rb'))['project']['version']
-          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version)
-          assert os.environ['GITHUB_REF_NAME'] == 'swarmtenderr-v' + version
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('value=' + version + '\n')
-          PY
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+          pattern: swarmtenderr-*
+          path: /tmp/accepted
+          merge-multiple: true
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
         with:
           username: elgon2003
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Publish the verified source for amd64 and arm64
-        id: image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: components/swarmtenderr
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            elgon2003/swarmtenderr:${{ steps.version.outputs.value }}
-            elgon2003/swarmtenderr:sha-${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.version.outputs.value }}
-          provenance: mode=max
-          sbom: true
-      - name: Record the immutable pull reference
-        env:
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-        run: printf 'Pull and deploy `elgon2003/swarmtenderr@%s`\n' "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Copy accepted bytes and attestations to Docker Hub
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends skopeo
+          for architecture in amd64 arm64; do
+            skopeo copy --all --preserve-digests --authfile "$HOME/.docker/config.json" \
+              "oci-archive:/tmp/accepted/swarmtenderr-$architecture.tar" \
+              "docker://elgon2003/swarmtenderr:sha-${{ github.sha }}-$architecture"
+          done
+          docker buildx imagetools create --tag elgon2003/swarmtenderr:candidate-${{ github.sha }} \
+            elgon2003/swarmtenderr:sha-${{ github.sha }}-amd64 \
+            elgon2003/swarmtenderr:sha-${{ github.sha }}-arm64
+          docker buildx imagetools inspect elgon2003/swarmtenderr:candidate-${{ github.sha }} >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify anonymous pull of both architectures
+        run: |
+          mkdir /tmp/anonymous-docker
+          for architecture in amd64 arm64; do
+            DOCKER_CONFIG=/tmp/anonymous-docker docker pull --platform linux/$architecture elgon2003/swarmtenderr:candidate-${{ github.sha }}
+          done

@@ -1,6 +1,7 @@
 """Read-only polling and a narrow projection of the external optimizer contract."""
 
 import json
+import hashlib
 import logging
 import math
 from pathlib import Path
@@ -62,6 +63,8 @@ def projection(rows, engine):
             "size": max(0, number(row.get("size"))), "seeds": max(0, number(row.get("num_seeds"))),
             "peers": max(0, number(row.get("num_leechs"))), "priority": number(row.get("priority"), -1),
             "eta_seconds": eta, "protected": protected,
+            "trial_until": number(decision.get("trial_until")), "cooldown_until": number(decision.get("cooldown_until")),
+            "estimate_source": text(decision.get("estimate_source"), 60),
             "decision": decision.get("decision", "Protected" if protected else "Native queue"),
             "reason": decision.get("reason", "Seeding or manual protection" if protected else "Managed by qBittorrent; no automatic policy attached")})
     return sorted(result, key=lambda row: (row["protected"], row["priority"] < 0, row["priority"], row["name"]))
@@ -82,34 +85,78 @@ def demo_rows():
 
 
 class Observer:
-    def __init__(self, settings, store, client):
+    def __init__(self, settings, store, client, runtime=None):
         self.settings, self.store, self.client = settings, store, client
+        self.runtime = runtime
+        self.client_identity = None
+        self.wake = threading.Event()
+        from .controller import Controller
+        self.controller = Controller(settings, store)
         self.last_error = ""
         self.stop = threading.Event()
         self.lock = threading.Lock()
 
+    def get_client(self):
+        if self.runtime is None:
+            return self.client
+        from .qbit import Qbit, UpstreamError
+        config = self.runtime.values()
+        if not config['qbit_url'] or not config['qbit_password']:
+            raise UpstreamError('Configure the qBittorrent connection in Settings')
+        identity = (config['qbit_url'], config['qbit_username'], hashlib.sha256(config['qbit_password'].encode()).hexdigest())
+        if identity != self.client_identity:
+            self.client = Qbit(config['qbit_url'], config['qbit_username'], password=config['qbit_password'])
+            self.client_identity = identity
+        return self.client
+
     def poll(self):
         with self.lock:
-            rows = demo_rows() if self.settings.demo else self.client.torrents()
-            engine = optimizer(self.settings.optimizer_state)
+            config = self.runtime.values() if self.runtime else {"controls_enabled": self.settings.controls, "retention_days": 30}
+            rows = demo_rows() if self.settings.demo else self.get_client().torrents()
+            if self.settings.optimizer_state:
+                engine = optimizer(self.settings.optimizer_state)
+            elif self.settings.demo:
+                engine = {"connected": False, "reason": "Demo queue; automatic optimization is disabled", "rows": [], "events": []}
+            else:
+                try:
+                    engine = self.controller.poll(self.get_client(), rows, config)
+                except Exception:
+                    engine = {"connected": False, "reason": "Policy evaluation failed; check native queue settings, capacity and pending requests in Activity", "rows": [], "events": []}
             torrents = projection(rows, engine)
             data = {"observed_at": time.time(), "demo": self.settings.demo,
-                    "controls": self.settings.controls, "optimizer": engine, "torrents": torrents,
+                    "controls": config["controls_enabled"], "optimizer": engine, "torrents": torrents,
                     "download_speed": sum(row["download_speed"] for row in torrents),
                     "upload_speed": sum(row["upload_speed"] for row in torrents)}
-            self.store.snapshot(data)
+            self.store.snapshot(data, rows, config["retention_days"], config.get("qbit_url", ""))
+            self.store.confirm_actions(rows)
             self.last_error = ""
             return data
 
     def run(self):
-        while not self.stop.is_set():
+        try:
+            while not self.stop.is_set():
+                try:
+                    self.poll()
+                except Exception:
+                    previous = self.last_error
+                    try:
+                        configured = self.settings.demo or (self.runtime and self.runtime.values()["qbit_url"])
+                    except Exception:
+                        configured = True
+                    self.last_error = "Polling failed; showing the last successful observation" if configured else "Configure the qBittorrent connection in Settings to begin monitoring."
+                    if self.last_error != previous and configured:
+                        logging.getLogger("swarmtenderr").warning("Observer poll failed")
+                try:
+                    interval = self.runtime.values()["poll_seconds"] if self.runtime else self.settings.poll_seconds
+                except Exception:
+                    interval = 5
+                self.wake.wait(interval)
+                self.wake.clear()
+        finally:
             try:
-                self.poll()
+                self.store.controller_lease(self.controller.owner, release=True)
             except Exception:
-                # Exceptions may carry SQL URLs or filesystem paths. Never log their values.
-                self.last_error = "Polling failed; showing the last successful observation"
-                logging.getLogger("swarmtenderr").warning("Observer poll failed")
-            self.stop.wait(self.settings.poll_seconds)
+                pass  # A crashed/unreachable database lease expires after 90s.
 
     def start(self):
         thread = threading.Thread(target=self.run, daemon=True, name="swarmtenderr-observer")

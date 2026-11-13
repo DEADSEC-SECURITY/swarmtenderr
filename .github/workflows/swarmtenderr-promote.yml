@@ -1,0 +1,51 @@
+name: Promote accepted Swarmtenderr digest
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: Candidate digest that passed local and isolated server acceptance
+        required: true
+        type: string
+      version:
+        description: Stable semantic version
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: swarmtenderr-stable-release
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate release identity
+        env:
+          ACCEPTED_DIGEST: ${{ inputs.digest }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PYCODE'
+          import os,re,tomllib
+          assert re.fullmatch(r'sha256:[a-f0-9]{64}',os.environ['ACCEPTED_DIGEST'])
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',os.environ['RELEASE_VERSION'])
+          assert tomllib.load(open('components/swarmtenderr/pyproject.toml','rb'))['project']['version'] == os.environ['RELEASE_VERSION']
+          PYCODE
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          username: elgon2003
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Promote the accepted manifest without building
+        env:
+          ACCEPTED_DIGEST: ${{ inputs.digest }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          docker buildx imagetools create --prefer-index=false \
+            --tag "elgon2003/swarmtenderr:$RELEASE_VERSION" \
+            "elgon2003/swarmtenderr@$ACCEPTED_DIGEST"
+          result=$(docker buildx imagetools inspect "elgon2003/swarmtenderr:$RELEASE_VERSION" --format '{{json .Manifest}}')
+          python -c 'import json,os,sys; assert json.loads(sys.argv[1])["digest"] == os.environ["ACCEPTED_DIGEST"]' "$result"
+          printf 'Promoted `elgon2003/swarmtenderr@%s` as `%s` without rebuilding.\n' "$ACCEPTED_DIGEST" "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"

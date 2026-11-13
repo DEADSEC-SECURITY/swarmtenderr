@@ -1,0 +1,11 @@
+{
+  "timezone": "UTC",
+  "poll_seconds": 3,
+  "retention_days": 30,
+  "policy_mode": "observe",
+  "managed_categories": [],
+  "download_slots": 3,
+  "minimum_free_gib": 50,
+  "work_budget_gib": 500,
+  "library_reserve_gib": 50
+}
