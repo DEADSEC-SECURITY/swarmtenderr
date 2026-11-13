@@ -46,10 +46,10 @@ def requirements(row):
             'unknown':unknown}
 
 
-def plan(rows, owned, history, requested, proposed, available, used, library_available, work_budget, now):
+def plan(rows, owned, history, requested, proposed, available, used, library_available, work_budget, now, *, reserve=RESERVE, library_reserve=RESERVE):
     from . import admission
-    budget=max(0,min(available-RESERVE-OTHER_BUFFER,work_budget-used-OTHER_BUFFER))
-    library_budget=max(0,library_available-RESERVE)
+    budget=max(0,min(available-reserve-OTHER_BUFFER,work_budget-used-OTHER_BUFFER))
+    library_budget=max(0,library_available-library_reserve) if library_available is not None else None
     # External/manual work is never reordered or stopped here, but its remaining
     # allocation must be paid before any automatic work can be promised space.
     external=[r for h,r in rows.items() if r.get('progress',1)<1 and r.get('state') in admission.RUNNING_STATES
@@ -57,12 +57,13 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
                    or 'apollo-keep' in str(r.get('tags','')).split(','))]
     external_ssd=sum(requirements(r)['ssd'] for r in external)
     external_library=sum(requirements(r)['library'] for r in external)
-    budget=max(0,budget-external_ssd);library_budget=max(0,library_budget-external_library)
+    budget=max(0,budget-external_ssd)
+    if library_budget is not None:library_budget=max(0,library_budget-external_library)
     # Completed torrents remain on the SSD through imports/seeding; their bytes
     # are already in actual usage. Still reserve destination capacity for copies.
     pending_library=sum(max(0,r.get('size',0),r.get('total_size',0),r.get('completed',0))
                         for r in rows.values() if r.get('progress',0)>=1)
-    library_budget=max(0,library_budget-pending_library)
+    if library_budget is not None:library_budget=max(0,library_budget-pending_library)
     eligible={h:r for h,r in rows.items() if h in owned and r.get('progress',1)<1
               and r.get('state') in admission.ACTIVE_STATES|admission.STOPPED_STATES
               and r.get('state')!='forcedDL' and not r.get('force_start')
@@ -84,7 +85,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
             deferred[identity]='Waiting for metadata slot';continue
         if ssd+cost['ssd']>budget:
             deferred[identity]='Waiting for SSD completion space';continue
-        if library+cost['library']>library_budget:
+        if library_budget is not None and library+cost['library']>library_budget:
             deferred[identity]='Waiting for library import space';continue
         if len(selected)>=slots:continue
         selected.append(identity);ssd+=cost['ssd'];library+=cost['library'];unknown+=cost['unknown']
@@ -94,11 +95,11 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     effective=min(requested,len(selected)+external_slots)
     deferred_costs=[requirements(rows[h])['ssd'] for h,reason in deferred.items()
                     if reason=='Waiting for SSD completion space']
-    target=(RESERVE+OTHER_BUFFER+external_ssd+ssd+min(deferred_costs)) if deferred_costs else 0
+    target=(reserve+OTHER_BUFFER+external_ssd+ssd+min(deferred_costs)) if deferred_costs else 0
     if target>work_budget:target=0  # Cleanup cannot create a larger SSD.
     return {'requested_slots':requested,'applied_slots':effective,'selected':selected,
             'ssd_budget_bytes':budget,'ssd_reserved_bytes':ssd,'library_budget_bytes':library_budget,
             'library_reserved_bytes':library,'external_reserved_bytes':external_ssd,
-            'reserve_bytes':RESERVE,'other_buffer_bytes':OTHER_BUFFER,'deferred':deferred,
+            'reserve_bytes':reserve,'library_capacity_applicable':library_available is not None,'other_buffer_bytes':OTHER_BUFFER,'deferred':deferred,
             'metadata_trials':unknown,'checked_at':now,'limited':effective<requested,
             'recovery_target_available_bytes':target}
