@@ -13,6 +13,8 @@ const state = {
   historyPage: 1,
   historyQuery: "",
   settings: null,
+  guardSettings: null,
+  guardError: "",
   settingsTab: "general",
   users: [],
   selectedTorrent: null,
@@ -177,11 +179,16 @@ $("theme-toggle").addEventListener("click", () => {
   const theme =
     document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   setTheme(theme);
+  renderCompletionChart();
+  renderTransferChart();
   try {
     localStorage.setItem("swarmtenderr-theme", theme);
   } catch {}
 });
 function showLogin(reason = "") {
+  dashboardCharts.dispose();
+  state.guardSettings = null;
+  state.guardError = "";
   state.loggingOut = true;
   advanceSession();
   state.user = null;
@@ -427,6 +434,7 @@ function classification(row) {
   return [row.state, "", "other"];
 }
 function render() {
+  renderGuardStatus();
   if (!state.user || !state.status) return;
   const focusedKey = document.activeElement?.dataset?.focusKey;
   const status = state.status,
@@ -589,148 +597,36 @@ function renderQueueSummary(rows) {
     $("queue-summary").append(button);
   }
 }
-const svgNS = "http://www.w3.org/2000/svg";
-function svg(tag, attrs = {}, text) {
-  const value = document.createElementNS(svgNS, tag);
-  for (const [key, item] of Object.entries(attrs))
-    value.setAttribute(key, String(item));
-  if (text !== undefined) value.textContent = text;
-  return value;
-}
-function chartBase(target, max, unit = "") {
-  target.replaceChildren();
-  const css = getComputedStyle(target),
-    width = Math.max(
-      280,
-      target.clientWidth -
-        parseFloat(css.paddingLeft) -
-        parseFloat(css.paddingRight),
-    ),
-    left = unit ? 68 : 35,
-    plotWidth = width - left - 16;
-  const s = svg("svg", {
-    viewBox: `0 0 ${width} 210`,
-    preserveAspectRatio: "none",
-  });
-  s.dataset.plotWidth = plotWidth;
-  s.dataset.plotLeft = left;
-  for (let i = 0; i <= 3; i++) {
-    const y = 15 + i * 55;
-    s.append(
-      svg("line", {
-        x1: left,
-        y1: y,
-        x2: width - 16,
-        y2: y,
-        class: "chart-grid-line",
-      }),
-    );
-    s.append(
-      svg(
-        "text",
-        { x: left - 9, y: y + 4, "text-anchor": "end", class: "chart-label" },
-        unit ? bytes((max * (3 - i)) / 3) : Math.round((max * (3 - i)) / 3),
-      ),
-    );
-  }
-  target.append(s);
-  return s;
-}
+const dashboardCharts = SwarmCharts.create({
+  bytes, date, zone,
+  openPeriod(period, chartPeriod) {
+    const bounds = SwarmCharts.periodBounds(period, chartPeriod);
+    $("history-from").value = bounds.from;
+    $("history-to").value = bounds.to;
+    $("history-search").value = "";
+    $("history-category").value = "";
+    $("history-category").disabled = false;
+    $("history-uncategorized").checked = false;
+    state.historyPage = 1;
+    state.historyQuery = "&" + new URLSearchParams(bounds);
+    navigate("history");
+  },
+});
 function renderCompletionChart() {
-  if (!state.statistics) return;
-  const values = state.statistics[state.chartPeriod],
-    max = Math.max(3, ...values.map((v) => v.count || 0));
-  const s = chartBase($("completion-chart"), max),
-    step = Number(s.dataset.plotWidth) / values.length,
-    left = Number(s.dataset.plotLeft);
-  values.forEach((value, i) => {
-    const h =
-        value.count == null
-          ? 3
-          : Math.max(value.count ? 2 : 1, (value.count / max) * 165),
-      bar = svg("rect", {
-        x: left + i * step,
-        y: 180 - h,
-        width: Math.max(3, step - 5),
-        height: h,
-        rx: 2,
-        class:
-          "completion-bar " +
-          (value.count == null ? "unknown" : value.partial ? "partial" : ""),
-      });
-    bar.append(
-      svg(
-        "title",
-        {},
-        `${value.period}: ${value.count == null ? "No historical coverage" : value.count + " completed"}${value.partial ? " (partial coverage)" : ""}`,
-      ),
-    );
-    s.append(bar);
-    if (
-      i === 0 ||
-      i === values.length - 1 ||
-      i === Math.floor(values.length / 2)
-    ) {
-      s.append(
-        svg(
-          "text",
-          {
-            x: left + i * step + step / 2,
-            y: 203,
-            "text-anchor": "middle",
-            class: "chart-label",
-          },
-          state.chartPeriod === "monthly"
-            ? value.period.slice(0, 7)
-            : value.period.slice(5),
-        ),
-      );
-    }
-  });
-  $("completion-chart-caption").textContent =
-    (state.chartPeriod === "daily" ? "Last 30 days" : "Last 12 months") +
-    " · " +
-    zone();
-  const total = values.reduce((n, v) => n + (v.count || 0), 0);
-  $("completion-legend").replaceChildren(
-    node("span", count(total) + " observed completions"),
-    node("span", "Faded bars: partial coverage"),
-  );
+  if (state.view !== "overview" || !state.statistics) return;
+  dashboardCharts.completion($("completion-chart"), state.statistics[state.chartPeriod], state.chartPeriod);
+  $("completion-chart-caption").textContent = (state.chartPeriod === "daily" ? "Last 30 days" : "Last 12 months") + " · " + zone();
 }
-document.querySelectorAll("[data-chart-period]").forEach((b) =>
-  b.addEventListener("click", () => {
-    state.chartPeriod = b.dataset.chartPeriod;
-    document
-      .querySelectorAll("[data-chart-period]")
-      .forEach((n) => n.classList.toggle("selected", n === b));
+document.querySelectorAll("[data-chart-period]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.chartPeriod = button.dataset.chartPeriod;
+    document.querySelectorAll("[data-chart-period]").forEach((item) => item.classList.toggle("selected", item === button));
     renderCompletionChart();
-  }),
-);
+  });
+});
 function renderTransferChart() {
-  const values = state.activity.samples || [];
-  if (values.length < 2) {
-    $("transfer-chart").replaceChildren(
-      node("div", "Waiting for rate observations", "chart-empty"),
-    );
-    return;
-  }
-  const max = Math.max(1024, ...values.flatMap((v) => [v.download, v.upload])),
-    s = chartBase($("transfer-chart"), max, "bytes"),
-    plotWidth = Number(s.dataset.plotWidth),
-    left = Number(s.dataset.plotLeft);
-  for (const field of ["download", "upload"]) {
-    const points = values.map(
-      (v, i) =>
-        `${left + (i / (values.length - 1)) * plotWidth},${180 - (v[field] / max) * 165}`,
-    );
-    s.append(
-      svg("path", { d: "M" + points.join(" L"), class: field + "-line" }),
-    );
-  }
-  $("transfer-legend").replaceChildren(
-    node("span", date(values[0].at)),
-    node("span", date(values.at(-1).at)),
-  );
+  if (state.view !== "overview") return;
+  dashboardCharts.transfer($("transfer-chart"), state.activity.samples || []);
 }
 function nameCell(row) {
   const td = node("td", null, "name-cell");
@@ -1337,10 +1233,25 @@ function inputValue(input, type) {
   return input.value.trim();
 }
 function settingsForm(key) {
-  const section = settingSections[key],
-    form = node("form", null, "settings-form panel");
+  const external = key === "optimizer" && state.settings.deployment.external_optimizer;
+  const config = external ? state.guardSettings : state.settings;
+  const assign = (value) => { if (external) state.guardSettings = value; else state.settings = value; };
+  const endpoint = external ? "/api/v1/optimizer/settings" : "/api/v1/settings";
+  const extra = state.settings.optimizer_fields || [];
+  const section = external ? { title: "Active torrent guard", description: "Changes apply on the next successful guard pass. Manual stops, force-starts, uploads and protected releases retain their existing protection.",
+    fields: (config?.fields || []).map((field) => [field.key, field.label, "number", field.help, field.minimum, field.maximum, field.group])
+  } : { ...settingSections[key], fields: [...settingSections[key].fields,
+    ...(key === "optimizer" ? extra.map((field) => [field.key, field.label, "number", field.help, field.minimum, field.maximum, field.group]) : [])] };
+  const form = node("form", null, "settings-form panel");
   form.dataset.section = key;
   form.append(node("h2", section.title), node("p", section.description));
+  if (!config) {
+    form.append(node("p", state.guardError || "The active guard control connection is unavailable. Reload settings to reconnect.", "form-message error"));
+    form.hidden = key !== state.settingsTab;
+    return form;
+  }
+  if (external) form.append(node("p", "", "guard-status"));
+  const groups = new Map();
   if (key === "sso") {
     const uri = node("div", null, "inset");
     uri.append(
@@ -1356,13 +1267,13 @@ function settingsForm(key) {
       title = node("label", label, "field-title");
     title.htmlFor = "setting-" + name;
     description.append(title, node("p", help, "field-help"));
-    const locked = state.settings.locked.includes(name);
+    const locked = config.locked.includes(name);
     description.append(
       node(
         "span",
         locked
           ? "Locked by deployment"
-          : state.settings.sources[name] === "ui"
+          : config.sources[name] === "ui"
             ? "Saved in app"
             : "Deployment default",
         "field-source",
@@ -1386,7 +1297,7 @@ function settingsForm(key) {
       }
       if (type === "password") {
         input.autocomplete = "new-password";
-        input.placeholder = state.settings.secrets[name]
+        input.placeholder = config.secrets[name]
           ? "Configured; leave blank to keep"
           : "Not configured";
       } else input.autocomplete = "off";
@@ -1394,21 +1305,30 @@ function settingsForm(key) {
     input.id = "setting-" + name;
     input.name = name;
     input.disabled = locked;
-    if (type === "checkbox") input.checked = !!state.settings.values[name];
+    if (type === "checkbox") input.checked = !!config.values[name];
     else if (type === "password") input.value = "";
     else if (type === "list")
-      input.value = (state.settings.values[name] || []).join(", ");
-    else input.value = state.settings.values[name] ?? "";
+      input.value = (config.values[name] || []).join(", ");
+    else input.value = config.values[name] ?? "";
     input.dataset.type = type;
     input.dataset.original = JSON.stringify(inputValue(input, type));
     wrapper.append(description, input);
-    form.append(wrapper);
+    const group = field[6] || (key === "optimizer" && ["download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"].includes(name) ? "Capacity" : null);
+    if (group) {
+      if (!groups.has(group)) {
+        const details = node("details", null, "tuning-group");
+        details.open = ["Capacity", "Protection"].includes(group);
+        details.append(node("summary", group));
+        groups.set(group, details); form.append(details);
+      }
+      groups.get(group).append(wrapper);
+    } else form.append(wrapper);
   }
   const controls = node("div", null, "button-row"),
     save = node("button", "Save changes", "button primary");
   save.type = "submit";
   save.disabled = section.fields.every((f) =>
-    state.settings.locked.includes(f[0]),
+    config.locked.includes(f[0]),
   );
   const reset = node("button", "Reset to deployment defaults", "button");
   reset.type = "button";
@@ -1416,16 +1336,18 @@ function settingsForm(key) {
   reset.addEventListener("click", async () => {
     reset.disabled = true;
     try {
-      state.settings = await api("/api/v1/settings/reset", {
-        method: "POST",
+      assign(await api(external ? endpoint : "/api/v1/settings/reset", {
+        method: external ? "PATCH" : "POST",
         body: {
-          revision: state.settings.revision,
-          keys: section.fields
+          revision: config.revision,
+          ...(external ? { changes: {} } : {}),
+          [external ? "reset" : "keys"]: section.fields
             .map((f) => f[0])
-            .filter((k) => !state.settings.locked.includes(k)),
+            .filter((k) => !config.locked.includes(k)),
         },
-      });
+      }));
       form.replaceWith(settingsForm(key));
+      renderGuardStatus();
       toast("Deployment defaults restored");
       $("settings-conflict").hidden = true;
     } catch (error) {
@@ -1499,11 +1421,12 @@ function settingsForm(key) {
     }
     save.disabled = true;
     try {
-      state.settings = await api("/api/v1/settings", {
+      assign(await api(endpoint, {
         method: "PATCH",
-        body: { revision: state.settings.revision, changes },
-      });
+        body: { revision: config.revision, changes },
+      }));
       form.replaceWith(settingsForm(key));
+      renderGuardStatus();
       $("settings-conflict").hidden = true;
       toast("Settings saved");
     } catch (error) {
@@ -1514,6 +1437,17 @@ function settingsForm(key) {
   });
   form.hidden = key !== state.settingsTab;
   return form;
+}
+function renderGuardStatus() {
+  const target = document.querySelector(".guard-status");
+  if (!target || !state.guardSettings) return;
+  const live = state.status?.snapshot?.optimizer;
+  const guard = state.guardSettings;
+  const healthy = live ? live.connected && !live.stale : guard.healthy;
+  const applied = live?.settings_revision ?? guard.applied_revision;
+  target.textContent = !healthy ? "Saved configuration is available. The guard has not reported a recent successful pass." : applied === guard.revision ? "Saved and applied by the active guard." : "Saved. Waiting for the guard to apply this revision.";
+  const capacity = live?.capacity;
+  if (capacity) target.textContent += ` Download slots: ${capacity.applied_slots} applied / ${capacity.requested_slots} requested.`;
 }
 function deploymentPanel() {
   const panel = node("section", null, "settings-readonly panel");
@@ -1550,6 +1484,12 @@ function deploymentPanel() {
 }
 async function loadSettings() {
   state.settings = await api("/api/v1/settings");
+  state.guardSettings = null;
+  state.guardError = "";
+  if (state.settings.deployment.optimizer_control) {
+    try { state.guardSettings = await api("/api/v1/optimizer/settings"); }
+    catch (error) { state.guardError = error.message; }
+  }
   $("settings-conflict").hidden = true;
   $("settings-tabs").replaceChildren();
   $("settings-forms").replaceChildren();
@@ -1573,6 +1513,7 @@ async function loadSettings() {
     if (key !== "deployment") $("settings-forms").append(settingsForm(key));
     else $("settings-forms").append(deploymentPanel());
   }
+  renderGuardStatus();
 }
 $("reload-settings").addEventListener("click", () =>
   loadSettings().catch((e) => toast(e.message)),

@@ -32,6 +32,7 @@ resource "docker_container" "app" {
     var.qbittorrent_password_file != "" ? ["QBITTORRENT_PASSWORD_FILE=/run/secrets/qbittorrent-password"] : [],
     var.oidc_secret_file != "" ? ["SWARMTENDERR_OIDC_SECRET_FILE=/run/secrets/oidc-client-secret"] : [],
     var.identity_ca_file != "" ? ["SSL_CERT_FILE=/run/certs/identity-ca.pem"] : [],
+    var.optimizer_control_directory != "" ? ["SWARMTENDERR_OPTIMIZER_CONTROL_SOCKET=/run/optimizer/optimizer.sock"] : [],
     var.observer_feed_file != "" ? ["SWARMTENDERR_OPTIMIZER_STATE=/observer/feed.json"] : [],
   var.library_probe_path != "" ? ["SWARMTENDERR_LIBRARY_PROBE_PATH=/probes/library"] : [])
 
@@ -67,6 +68,7 @@ resource "docker_container" "app" {
     for_each = { for destination, source in {
       "/run/certs/identity-ca.pem" = var.identity_ca_file,
       "/observer/feed.json"        = var.observer_feed_file,
+      "/run/optimizer"             = var.optimizer_control_directory,
       "/probes/library"            = var.library_probe_path
     } : destination => source if source != "" }
     content {

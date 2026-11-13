@@ -1,5 +1,7 @@
 """Versioned SQL storage, transactional writes, audit and completion records."""
 from contextlib import contextmanager
+from swarmtenderr_policy.tuning import POLICY_DEFAULTS
+
 import hashlib
 import json
 from pathlib import Path
@@ -133,7 +135,7 @@ class Store:
                 self.execute(c, "DELETE FROM swarmtenderr_configuration WHERE key=?", (key,))
             if (set(changes) | set(reset)) & {"sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_allowed_groups"}:
                 self.execute(c, "DELETE FROM swarmtenderr_sessions WHERE user_id IN (SELECT id FROM swarmtenderr_users WHERE issuer <> '')")
-            policy_keys = {"policy_mode", "managed_categories", "excluded_tags", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"}
+            policy_keys = set(POLICY_DEFAULTS) | {"policy_mode", "managed_categories", "excluded_tags", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"}
             if (set(changes) | set(reset)) & policy_keys:
                 self.set_meta(c, "policy_revision", self.meta("policy_revision", 0, c) + 1)
             if "policy_mode" in set(changes) | set(reset):

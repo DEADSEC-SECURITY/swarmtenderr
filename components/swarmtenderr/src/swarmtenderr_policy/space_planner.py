@@ -1,6 +1,8 @@
 """Reserve finishable batches without crediting speculative imports or deletion."""
 from __future__ import annotations
 
+from swarmtenderr_policy.tuning import DEFAULT_POLICY
+
 import math
 
 GIB = 1024**3
@@ -35,28 +37,28 @@ def preserved_slots(current):
     return 0
 
 
-def requirements(row):
+def requirements(row, *, policy=DEFAULT_POLICY):
     remaining=row.get('amount_left',0)
     # Missing metadata cannot be booked as a zero-byte download. Discovery and
     # a separate repeated-failure repair probe each pay this same reservation.
     unknown=not isinstance(remaining,(float,int)) or not math.isfinite(remaining) or remaining<=0
-    remaining=UNKNOWN_RESERVATION if unknown else int(remaining)
+    remaining=policy.unknown_reservation if unknown else int(remaining)
     total=max(remaining,row.get('size',0),row.get('total_size',0),row.get('completed',0)+remaining)
     return {'ssd':math.ceil(remaining*1.02)+64*1024**2,'library':math.ceil(total*1.02),
             'unknown':unknown}
 
 
-def plan(rows, owned, history, requested, proposed, available, used, library_available, work_budget, now, *, reserve=RESERVE, library_reserve=RESERVE):
+def plan(rows, owned, history, requested, proposed, available, used, library_available, work_budget, now, *, reserve=RESERVE, library_reserve=RESERVE, policy=DEFAULT_POLICY):
     from . import admission
-    budget=max(0,min(available-reserve-OTHER_BUFFER,work_budget-used-OTHER_BUFFER))
+    budget=max(0,min(available-reserve-policy.other_buffer,work_budget-used-policy.other_buffer))
     library_budget=max(0,library_available-library_reserve) if library_available is not None else None
     # External/manual work is never reordered or stopped here, but its remaining
     # allocation must be paid before any automatic work can be promised space.
     external=[r for h,r in rows.items() if r.get('progress',1)<1 and r.get('state') in admission.RUNNING_STATES
               and (h not in owned or r.get('force_start') or r.get('state')=='forcedDL'
                    or 'apollo-keep' in str(r.get('tags','')).split(','))]
-    external_ssd=sum(requirements(r)['ssd'] for r in external)
-    external_library=sum(requirements(r)['library'] for r in external)
+    external_ssd=sum(requirements(r, policy=policy)['ssd'] for r in external)
+    external_library=sum(requirements(r, policy=policy)['library'] for r in external)
     budget=max(0,budget-external_ssd)
     if library_budget is not None:library_budget=max(0,library_budget-external_library)
     # Completed torrents remain on the SSD through imports/seeding; their bytes
@@ -69,7 +71,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
               and r.get('state')!='forcedDL' and not r.get('force_start')
               and 'apollo-keep' not in str(r.get('tags','')).split(',')}
     ordered=list(dict.fromkeys(proposed['front']+proposed['order']+
-        sorted(eligible,key=lambda h:admission.priority(eligible[h],history.get(h,{}),now))))
+        sorted(eligible,key=lambda h:admission.priority(eligible[h],history.get(h,{}),now, policy=policy))))
     selected=[];deferred={};ssd=0;library=0;unknown=0;discovery_unknown=0
     # Forced downloads bypass native limits; other manual active jobs consume a
     # native slot. Both still consume the disk reservation above.
@@ -77,7 +79,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     slots=max(0,requested-external_slots)
     for identity in ordered:
         if identity not in eligible:continue
-        row=eligible[identity];cost=requirements(row)
+        row=eligible[identity];cost=requirements(row, policy=policy)
         # Never turn repair/discovery cooldowns into ordinary admission.
         if identity not in proposed.get('eligible',eligible):continue
         repair=identity==proposed.get('metadata_repair')
@@ -93,13 +95,13 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     # Zero native download slots is supported by qBittorrent/libtorrent. It keeps
     # jobs Queued and leaves the independent upload queue running.
     effective=min(requested,len(selected)+external_slots)
-    deferred_costs=[requirements(rows[h])['ssd'] for h,reason in deferred.items()
+    deferred_costs=[requirements(rows[h], policy=policy)['ssd'] for h,reason in deferred.items()
                     if reason=='Waiting for SSD completion space']
-    target=(reserve+OTHER_BUFFER+external_ssd+ssd+min(deferred_costs)) if deferred_costs else 0
+    target=(reserve+policy.other_buffer+external_ssd+ssd+min(deferred_costs)) if deferred_costs else 0
     if target>work_budget:target=0  # Cleanup cannot create a larger SSD.
     return {'requested_slots':requested,'applied_slots':effective,'selected':selected,
             'ssd_budget_bytes':budget,'ssd_reserved_bytes':ssd,'library_budget_bytes':library_budget,
             'library_reserved_bytes':library,'external_reserved_bytes':external_ssd,
-            'reserve_bytes':reserve,'library_capacity_applicable':library_available is not None,'other_buffer_bytes':OTHER_BUFFER,'deferred':deferred,
+            'reserve_bytes':reserve,'library_capacity_applicable':library_available is not None,'other_buffer_bytes':policy.other_buffer,'deferred':deferred,
             'metadata_trials':unknown,'checked_at':now,'limited':effective<requested,
             'recovery_target_available_bytes':target}

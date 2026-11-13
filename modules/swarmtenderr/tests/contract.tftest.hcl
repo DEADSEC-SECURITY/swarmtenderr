@@ -107,3 +107,33 @@ run "reject_unknown_setting_locks" {
   }
   expect_failures = [var.locked_settings]
 }
+
+run "active_guard_control_and_tuning" {
+  command = plan
+  variables {
+    observer_feed_file          = "/srv/observer/feed.json"
+    optimizer_control_directory = "/srv/swarmtenderr-control"
+    defaults                    = { ranking_interval_seconds = 360, unknown_size_gib = 4 }
+    locked_settings             = ["ranking_interval_seconds"]
+  }
+  assert {
+    condition     = contains(docker_container.app.env, "SWARMTENDERR_OPTIMIZER_CONTROL_SOCKET=/run/optimizer/optimizer.sock")
+    error_message = "The optional control connection must use the narrow local socket."
+  }
+  assert {
+    condition     = length([for mount in docker_container.app.volumes : mount if mount.host_path == "/srv/swarmtenderr-control" && mount.container_path == "/run/optimizer" && mount.read_only]) == 1
+    error_message = "The control directory must be mounted read-only."
+  }
+}
+
+run "reject_dual_control_ownership" {
+  command = plan
+  variables { optimizer_control_directory = "/srv/swarmtenderr-control" }
+  expect_failures = [var.optimizer_control_directory]
+}
+
+run "reject_inconsistent_trial_window" {
+  command = plan
+  variables { defaults = { swarm_trial_seconds = 60 } }
+  expect_failures = [var.defaults]
+}

@@ -7,6 +7,8 @@
     <title>Swarmtenderr</title>
     <link rel="icon" href="/logo.svg" />
     <link rel="stylesheet" href="/style.css" />
+    <script src="/echarts-6.1.0.min.js" defer></script>
+    <script src="/charts.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -174,7 +176,7 @@
                   role="img"
                   aria-label="Completed torrents by period"
                 ></div>
-                <div id="completion-legend" class="chart-legend"></div>
+                <div id="completion-legend" hidden></div>
               </article>
               <article class="panel chart-panel">
                 <div class="panel-heading">
@@ -183,8 +185,8 @@
                     <p>Recent observations</p>
                   </div>
                   <div class="legend">
-                    <span class="download-key">↓ Download</span
-                    ><span class="upload-key">↑ Upload</span>
+                    <button class="download-key chart-series" type="button" data-chart-series="Download" aria-pressed="true">↓ Download</button
+                    ><button class="upload-key chart-series" type="button" data-chart-series="Upload" aria-pressed="true">↑ Upload</button>
                   </div>
                 </div>
                 <div
@@ -193,7 +195,7 @@
                   role="img"
                   aria-label="Download and upload rates"
                 ></div>
-                <div id="transfer-legend" class="chart-legend"></div>
+                <div id="transfer-legend" hidden></div>
               </article>
             </div>
             <section id="category-panel" class="panel" hidden>

@@ -37,6 +37,7 @@ class Settings:
     public_url: str = "http://localhost:8787"
     controls: bool = False
     optimizer_state: str = ""
+    optimizer_control_socket: str = ""
     demo: bool = False
     poll_seconds: int = 3
     timezone: str = "UTC"
@@ -64,7 +65,8 @@ class Settings:
             app_password=read_secret(os.environ.get("SWARMTENDERR_PASSWORD_FILE", "")),
             public_url=origin(os.environ.get("SWARMTENDERR_PUBLIC_URL", cls.public_url)),
             controls=os.environ.get("SWARMTENDERR_CONTROLS", "false").lower() == "true",
-            optimizer_state=os.environ.get("SWARMTENDERR_OPTIMIZER_STATE", ""), demo=demo,
+            optimizer_state=os.environ.get("SWARMTENDERR_OPTIMIZER_STATE", ""),
+            optimizer_control_socket=os.environ.get("SWARMTENDERR_OPTIMIZER_CONTROL_SOCKET", ""), demo=demo,
             poll_seconds=int(os.environ.get("SWARMTENDERR_POLL_SECONDS", "3")),
             timezone=os.environ.get("TZ", "UTC"), defaults=defaults,
             locked_settings=tuple(filter(None, os.environ.get("SWARMTENDERR_LOCKED_SETTINGS", "").split(","))),

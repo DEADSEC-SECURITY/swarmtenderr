@@ -3,18 +3,23 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from .settings import origin, read_secret
+from swarmtenderr_policy.tuning import POLICY_DEFAULTS, RULES, Policy, fields
 
 
 SECRET_KEYS = {"qbit_password", "sso_client_secret"}
 NUMBERS = {"poll_seconds": (1, 3600), "retention_days": (1, 365),
            "download_slots": (1, 100), "minimum_free_gib": (1, 100000),
            "work_budget_gib": (1, 100000), "library_reserve_gib": (1, 100000)}
+NUMBERS.update({key: RULES[key][:2] for key in POLICY_DEFAULTS})
+OPTIMIZER_KEYS = set(POLICY_DEFAULTS) | {"policy_mode", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib", "managed_categories", "excluded_tags"}
 LISTS = {"managed_categories", "excluded_tags", "sso_allowed_groups"}
 
 
 class Runtime:
     def __init__(self, settings, store, vault):
         self.settings, self.store, self.vault = settings, store, vault
+        if settings.optimizer_control_socket and not settings.optimizer_state:
+            raise ValueError("An optimizer control connection requires its external observer feed")
         self.defaults = {
             "qbit_url": settings.qbit_url, "qbit_username": settings.qbit_user,
             "poll_seconds": settings.poll_seconds, "retention_days": 30,
@@ -22,6 +27,7 @@ class Runtime:
             "policy_mode": "observe", "download_slots": 3,
             "managed_categories": [], "excluded_tags": ["apollo-keep", "swarmtenderr-keep"],
             "minimum_free_gib": 50, "work_budget_gib": 500, "library_reserve_gib": 50,
+            **POLICY_DEFAULTS,
             "sso_enabled": False, "sso_issuer": "", "sso_client_id": "",
             "sso_label": "Sign in with SSO", "sso_allowed_groups": [], "sso_default_role": "viewer",
         }
@@ -29,8 +35,10 @@ class Runtime:
             raise ValueError("Unknown or secret deployment configuration keys")
         self.defaults.update(settings.defaults)
         self.validate(self.defaults)
+        Policy.from_values(self.defaults)
         if set(settings.locked_settings) - (set(self.defaults) | SECRET_KEYS):
             raise ValueError("Unknown locked setting")
+        Policy.from_values(self.values())
 
     def values(self, snapshot=None):
         revision, saved, policy_revision, ack_revision = self.store.config(include_policy=True) if snapshot is None else snapshot
@@ -54,14 +62,16 @@ class Runtime:
             locked |= {"qbit_url", "qbit_username", "qbit_password", "sso_enabled",
                        "sso_issuer", "sso_client_id", "sso_client_secret", "controls_enabled", "policy_mode"}
         if self.settings.optimizer_state:
-            locked |= {"controls_enabled", "policy_mode"}
+            locked |= OPTIMIZER_KEYS | {"controls_enabled"}
         return {"revision": revision,
                 "values": {key: values[key] for key in self.defaults},
                 "secrets": {key: bool(values[key]) for key in SECRET_KEYS},
                 "sources": {key: "ui" if key in saved and key not in locked else "deployment" for key in self.defaults | dict.fromkeys(SECRET_KEYS)},
                 "locked": sorted(locked),
+                "optimizer_fields": fields(set(POLICY_DEFAULTS), self.defaults),
                 "deployment": {"database": "postgresql" if self.store.postgres else "sqlite",
                                "public_url": self.settings.public_url, "external_optimizer": bool(self.settings.optimizer_state),
+                               "optimizer_control": bool(self.settings.optimizer_control_socket),
                                "demo": self.settings.demo}}
 
     def validate(self, changes):
@@ -118,6 +128,7 @@ class Runtime:
         for key in reset:
             candidate[key] = (read_secret(self.settings.qbit_password_file) if key == "qbit_password" else
                               read_secret(self.settings.oidc_secret_file) if key == "sso_client_secret" else self.defaults[key])
+        Policy.from_values(candidate)
         if candidate["sso_enabled"] and not all(candidate[key] for key in ("sso_issuer", "sso_client_id", "sso_client_secret")):
             raise ValueError("SSO requires an issuer, client ID and client secret")
         if candidate["policy_mode"] == "enforce" and not candidate["managed_categories"]:

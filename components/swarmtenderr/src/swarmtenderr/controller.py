@@ -9,6 +9,7 @@ import time
 import uuid
 
 from swarmtenderr_policy import admission, space_planner, optimizer_observability
+from swarmtenderr_policy.tuning import Policy
 
 
 class Controller:
@@ -48,6 +49,7 @@ class Controller:
 
     def poll(self, client, raw, config):
         now = time.time()
+        policy = Policy.from_values(config)
         if not self.store.controller_lease(self.owner):
             return {'connected': True, 'mode': 'observe', 'effective_status': 'standby', 'reason': 'Another instance owns policy evaluation', 'rows': [], 'events': []}
         state = self.store.policy_state()
@@ -55,14 +57,14 @@ class Controller:
         history = state.setdefault('history', {})
         history = state['history'] = {key: value for key, value in history.items()
                                      if key in rows or now - value.get('observed_at', 0) < 86400}
-        admission.observe(rows, history, now)
+        admission.observe(rows, history, now, policy=policy)
         owned = {key: {} for key, row in rows.items() if self.managed(row, config)}
         preferences = client.preferences()
         free = client.system_state().get('free_space_on_disk')
         library = shutil.disk_usage(self.settings.library_probe_path).free if self.settings.library_probe_path else None
         used = sum(max(0, row.get('completed', 0)) for row in raw)
         proposed = admission.queue_plan(rows, owned, history, now,
-            trial_budget=config['work_budget_gib'] * 1024**3, max_downloads=config['download_slots'])
+            trial_budget=config['work_budget_gib'] * 1024**3, max_downloads=config['download_slots'], policy=policy)
         # Repair observations depend on a separate repair owner in Apollo. A
         # standalone scheduler has no authority to create those repair trials.
         repair = proposed.get('metadata_repair')
@@ -73,7 +75,7 @@ class Controller:
         capacity = space_planner.plan(rows, owned, history, config['download_slots'], proposed,
             free, used, library, config['work_budget_gib'] * 1024**3, now,
             reserve=config['minimum_free_gib'] * 1024**3,
-            library_reserve=config['library_reserve_gib'] * 1024**3)
+            library_reserve=config['library_reserve_gib'] * 1024**3, policy=policy)
         capacity['native_slots'] = preferences.get('max_active_downloads')
         state['space_plan'] = capacity
         plan = copy.deepcopy(proposed)
@@ -136,9 +138,9 @@ class Controller:
             elif state.get('ceiling') and native not in (state['ceiling']['applied'], state['ceiling']['original']):
                 reason = 'The native download ceiling changed outside Swarmtenderr. Return to Observe before taking ownership again.'
             elif not reason and not state.get('pending_mutations'):
-                ready = admission.ranking_ready(state, plan, now)
+                ready = admission.ranking_ready(state, plan, now, policy=policy)
                 if ready:
-                    admission.commit_plan(plan, rows, history, now)
+                    admission.commit_plan(plan, rows, history, now, policy=policy)
                     state['queue_front'], state['queue_ranked_at'] = plan['front'], now
                     self.store.save_policy(state)
                     # Preserve selected order through native top-priority calls.
@@ -157,7 +159,7 @@ class Controller:
                 effective, reason = 'enforcing', 'Enforcing native queue priorities and download capacity'
             if state.get('pending_mutations') and not state.get('mutation_fault'):
                 effective, reason = 'pending', 'Requests accepted; waiting for qBittorrent confirmation'
-        optimizer_observability.snapshot(state, rows, owned, plan, now)
+        optimizer_observability.snapshot(state, rows, owned, plan, now, policy=policy)
         self.store.save_policy(state)
         for item in state['optimizer']['rows']:
             entry = history.get(item['torrent'], {})

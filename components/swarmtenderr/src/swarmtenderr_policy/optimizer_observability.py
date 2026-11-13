@@ -1,6 +1,8 @@
 """Bounded optimizer explanations, confirmed changes and public metrics."""
 from __future__ import annotations
 
+from swarmtenderr_policy.tuning import DEFAULT_POLICY
+
 import json
 import math
 
@@ -14,16 +16,16 @@ def public_text(value, limit=160):
     return ''.join(c if c.isprintable() else ' ' for c in str(value or ''))[:limit]
 
 
-def reason_text(reason, estimate):
+def reason_text(reason, estimate, *, policy=DEFAULT_POLICY):
     parts = [reason]
     if reason=='Metadata discovery trial':
-        parts.extend(('3-minute sample',f"{estimate['seeds']} reported seeders",
+        parts.extend((f'{policy.metadata_trial_seconds / 60:g}-minute sample',f"{estimate['seeds']} reported seeders",
                       f"{estimate['peer_hint']} known peers"))
     if reason=='Metadata repair observation':parts.append('35-minute Cleanuparr observation after repeated timeouts')
     if reason in ('Seeded speed trial','Next seeded trial'):
         parts.append(f"{estimate['seeds']} reported seeders")
     if reason in ('Swarm discovery trial','Next swarm discovery'):
-        if reason=='Swarm discovery trial':parts.append('3-minute sample')
+        if reason=='Swarm discovery trial':parts.append(f'{policy.swarm_trial_seconds / 60:g}-minute sample')
         if estimate['popularity_hint']>0:parts.append(f"popularity hint {estimate['popularity_hint']:.0f}")
         if estimate['peer_hint']>0:parts.append(f"{estimate['peer_hint']} known peers")
     if reason == 'Completion score':
@@ -38,12 +40,12 @@ def reason_text(reason, estimate):
     return '; '.join(parts)
 
 
-def remember_change(state, before, identity, action, now):
+def remember_change(state, before, identity, action, now, *, policy=DEFAULT_POLICY):
     """Keep accepted requests until qBittorrent's asynchronous position cache updates."""
     pending = state.setdefault('optimizer_pending_changes',
                                {'requested_at':now,'before':{},'actions':{}})
-    values = admission.estimate(before[identity],state.get('history',{}).get(identity,{}),now)
-    pending['actions'][identity] = dict(action,explanation=reason_text(action['reason'],values),
+    values = admission.estimate(before[identity],state.get('history',{}).get(identity,{}),now, policy=policy)
+    pending['actions'][identity] = dict(action,explanation=reason_text(action['reason'],values, policy=policy),
                                         eta_seconds=values['eta_seconds'],estimate_source=values['source'],
                                         requested_at=now)
     for item in set(pending['actions']) | set(state.get('optimizer_applied_front',[])):
@@ -53,7 +55,7 @@ def remember_change(state, before, identity, action, now):
                                               'progress':row.get('progress',0)})
 
 
-def changes(state, before, after, actions, now):
+def changes(state, before, after, actions, now, *, policy=DEFAULT_POLICY):
     """Record confirmed requests and displacement of the previously chosen front."""
     if not actions:
         return
@@ -76,10 +78,10 @@ def changes(state, before, after, actions, now):
             continue
         elif action['action'] == 'Promoted' and current > previous:
             action = {'action':'Moved back','reason':'Yielded to promoted downloads'}
-        values = admission.estimate(row, history.get(identity,{}), now)
+        values = admission.estimate(row, history.get(identity,{}), now, policy=policy)
         event = {'event':'cinema_optimizer_priority_change','at':now,
                  'torrent_id':identity,'torrent':public_text(row.get('name',identity)),
-                 'action':action['action'],'reason':action.get('explanation',reason_text(action['reason'],values)),
+                 'action':action['action'],'reason':action.get('explanation',reason_text(action['reason'],values, policy=policy)),
                  'before':previous,'after':current,'eta_seconds':action.get('eta_seconds',values['eta_seconds']),
                  'estimate_source':action.get('estimate_source',values['source']),
                  'requested_at':action.get('requested_at',now)}
@@ -92,7 +94,7 @@ def changes(state, before, after, actions, now):
         state['optimizer_applied_front'] = list(state.get('queue_front', []))
 
 
-def snapshot(state, rows, owned, plan, now):
+def snapshot(state, rows, owned, plan, now, *, policy=DEFAULT_POLICY):
     history = state.get('history', {})
     eligible = {h:r for h,r in rows.items() if r.get('progress',1)<1
                 and (h in owned or r.get('state') == 'forcedDL')}
@@ -107,7 +109,7 @@ def snapshot(state, rows, owned, plan, now):
     result = []
     for identity in ordered:
         row = eligible[identity]
-        values = admission.estimate(row,history.get(identity,{}),now)
+        values = admission.estimate(row,history.get(identity,{}),now, policy=policy)
         change = history.get(identity,{}).get('priority_change',{})
         forced = row.get('state') == 'forcedDL' or row.get('force_start',False)
         if forced:
@@ -115,25 +117,25 @@ def snapshot(state, rows, owned, plan, now):
         elif identity in state.get('held',{}):
             decision, reason = 'Held','Safety or retired-release hold'
         elif history.get(identity,{}).get('deferred_until',0)>now:
-            decision, reason = 'Probe deferred','35 active minutes without progress'
+            decision, reason = 'Probe deferred',f'{policy.probe_seconds / 60:g} active minutes without progress'
         elif (row.get('amount_left',0)<=0
               and history.get(identity,{}).get('metadata_retry_at',0)>now):
             decision, reason = 'Metadata deferred','Metadata sample ended; bounded retry cooldown'
         elif (history.get(identity,{}).get('swarm_trial_retry_at',0)>now
               and history.get(identity,{}).get('swarm_trial_result',{}).get('outcome')=='no_progress'
               and row.get('dlspeed',0)<=0):
-            decision, reason = 'Probe deferred','No progress in swarm sample; two-hour retry cooldown'
+            decision, reason = 'Probe deferred',('No progress in swarm sample; two-hour retry cooldown' if policy.swarm_retry_seconds == 7200 else f'No progress in swarm sample; {policy.swarm_retry_seconds / 60:g}-minute retry cooldown')
         elif identity in state.get('space_plan',{}).get('deferred',{}):
             decision,reason='Waiting for space',state['space_plan']['deferred'][identity]
         elif identity in plan['front']:
             decision = 'Chosen'
-            reason = reason_text(plan['reasons'][identity],values)
+            reason = reason_text(plan['reasons'][identity],values, policy=policy)
             if plan['front'] != actual_front:
-                decision = 'Recommended' if admission.ranking_ready(state,plan,now) else 'Pending cooldown'
+                decision = 'Recommended' if admission.ranking_ready(state,plan,now, policy=policy) else 'Pending cooldown'
         else:
             decision = 'Running' if row.get('state') in admission.RUNNING_STATES else 'Waiting'
-            reason = (reason_text('Next seeded trial',values) if identity in plan.get('up_next',[])
-                      else reason_text('Next swarm discovery',values) if identity in plan.get('swarm_next',[])
+            reason = (reason_text('Next seeded trial',values, policy=policy) if identity in plan.get('up_next',[])
+                      else reason_text('Next swarm discovery',values, policy=policy) if identity in plan.get('swarm_next',[])
                       else 'Seeded trial waiting for space' if values['seeds']>=admission.MIN_TRIAL_SEEDS
                       and row.get('amount_left',0)>state.get('seed_trial_budget_bytes',float('inf'))
                       else 'Waiting for metadata trial' if values['source']=='Unknown size'
@@ -161,7 +163,7 @@ def snapshot(state, rows, owned, plan, now):
     deadlines=[h[field] for h in history.values() for field in ('swarm_trial_until','metadata_trial_until')
                if h.get(field,0)>now]
     state['optimizer'] = {'checked_at':now,'rows':result,'total_candidates':len(eligible),
-                          'next_ranking_at':min([state.get('queue_ranked_at',0)+300,*deadlines])}
+                          'next_ranking_at':min([state.get('queue_ranked_at',0)+policy.ranking_interval_seconds,*deadlines])}
 
 
 def metrics(state):
