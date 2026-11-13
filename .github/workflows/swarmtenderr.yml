@@ -40,6 +40,9 @@ jobs:
       - name: Validate frontend syntax and the OpenAPI schema
         run: |
           node --check components/swarmtenderr/src/swarmtenderr/static/app.js
+          node --check components/swarmtenderr/src/swarmtenderr/static/charts.js
+          node --test components/swarmtenderr/tests/test_charts.cjs
+          python -B components/swarmtenderr/tools/vendor_echarts.py
           pip install openapi-spec-validator==0.9.0
           python -m openapi_spec_validator components/swarmtenderr/config/openapi.json
       - uses: docker/setup-docker-action@3f1ab1ab0e29231562e4db4ca600c1a49653bac6

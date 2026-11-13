@@ -37,7 +37,8 @@ def optimizer(path):
                    "action": text(event.get("action")), "reason": text(event.get("reason"), 300)}
                   for event in state.get("optimizer_events", [])[-50:]]
         return {"connected": True, "stale": stale, "observed_at": checked,
-                "rows": rows, "capacity": capacity, "events": events}
+                "rows": rows, "capacity": capacity, "events": events,
+                "settings_revision": number(state.get("optimizer_settings_revision"))}
     except (OSError, ValueError, TypeError, AttributeError):
         return {"connected": False, "reason": "Optimizer snapshot unavailable", "rows": [], "events": []}
 

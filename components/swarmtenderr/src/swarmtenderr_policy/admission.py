@@ -1,6 +1,8 @@
 """Rank native qBittorrent queue entries without stopping transfers."""
 from __future__ import annotations
 
+from swarmtenderr_policy.tuning import DEFAULT_POLICY
+
 import math
 
 ACTIVE_STATES = {'downloading', 'forcedDL', 'stalledDL', 'queuedDL', 'metaDL', 'checkingDL'}
@@ -58,16 +60,16 @@ def discovery_signals(row: dict) -> dict:
             'peer_hint':max(0,row.get('num_incomplete',0),row.get('num_leechs',0))}
 
 
-def estimate(row: dict, history: dict, now: float) -> dict:
+def estimate(row: dict, history: dict, now: float, *, policy=DEFAULT_POLICY) -> dict:
     remaining = max(1,row.get('amount_left',0))
     # Queued jobs do not generate zero-speed samples. Expire their frozen rate
     # instead of treating an hours-old fast transfer as current evidence.
-    fresh = now-history.get('last_progress_at',now) <= RATE_FRESH_SECONDS
+    fresh = now-history.get('last_progress_at',now) <= policy.rate_fresh_seconds
     observed = max(0,history.get('rate',0)) if fresh else 0
     current = max(0,row.get('dlspeed',0))
-    samples = [s for s in history.get('rate_samples',[]) if now-s['at']<=SWARM_TRIAL_SECONDS]
+    samples = [s for s in history.get('rate_samples',[]) if now-s['at']<=policy.swarm_trial_seconds]
     seconds = sum(s['seconds'] for s in samples)
-    sustained = sum(s['bytes'] for s in samples)/seconds if seconds>=MIN_RATE_SAMPLE_SECONDS else None
+    sustained = sum(s['bytes'] for s in samples)/seconds if seconds>=policy.minimum_rate_sample_seconds else None
     speed = sustained if sustained is not None else max(observed,current)
     seeds = max(0,row.get('num_complete',0),row.get('num_seeds',0))
     waited = max(0,now-row.get('added_on',now))
@@ -88,32 +90,32 @@ def estimate(row: dict, history: dict, now: float) -> dict:
             'score_seconds':eta/completion_boost/age_boost/small_boost,'estimated_speed':effective,
             'source':source if row.get('amount_left',0)>0 else 'Unknown size',
             'age_boost':age_boost,'completion_boost':completion_boost,'small_boost':small_boost,'seeds':seeds,
-            'has_measured_speed':speed>0,'viable':viable,'proven':speed>=MIN_PROVEN_SPEED,
+            'has_measured_speed':speed>0,'viable':viable,'proven':speed>=policy.min_proven_speed,
             **discovery_signals(row)}
 
 
-def priority(row: dict, history: dict, now: float) -> tuple:
-    values=estimate(row,history,now)
+def priority(row: dict, history: dict, now: float, *, policy=DEFAULT_POLICY) -> tuple:
+    values=estimate(row,history,now, policy=policy)
     # A tiny guessed ETA must not evict a transfer already demonstrating useful
     # throughput. The separate discovery slot measures untested swarms.
     return (not values['viable'],not values['proven'],values['score_seconds'],-values['seeds'],
             row.get('added_on',now),row['hash'])
 
 
-def discovery_hint(row: dict, history: dict, now: float) -> tuple:
+def discovery_hint(row: dict, history: dict, now: float, *, policy=DEFAULT_POLICY) -> tuple:
     """Weak hints choose experiments; they never supply a speed or ETA."""
     prior = max((r.get('rate',0) for key in ('seed_trial_result','swarm_trial_result')
                  if (r := history.get(key,{})) and 0 <= now-r.get('at',0) < 7*86400),default=0)
     signals=discovery_signals(row)
     # A previous successful sample is useful but cannot dominate discovery for
     # days after seed information was lost. Its contribution is bounded.
-    hint=math.log1p(signals['popularity_hint'])+min(1,math.log1p(max(0,prior)/MIN_PROVEN_SPEED))
+    hint=math.log1p(signals['popularity_hint'])+min(1,math.log1p(max(0,prior)/policy.min_proven_speed))
     return (-hint,-signals['peer_hint'],
             history.get('last_probe_at',0),row.get('added_on',now),row['hash'])
 
 
-def last_sample_at(history: dict, now: float) -> float:
-    previous=history.get('seed_trial_at',now-SEED_TRIAL_RETRY_SECONDS)
+def last_sample_at(history: dict, now: float, *, policy=DEFAULT_POLICY) -> float:
+    previous=history.get('seed_trial_at',now-policy.seed_trial_retry_seconds)
     if history.get('swarm_trial_result',{}).get('outcome') in ('progress','no_progress'):
         previous=max(previous,history.get('swarm_trial_at',previous))
     return previous
@@ -130,7 +132,7 @@ def metadata_candidate(unknown, history, now):
         -discovery_signals(r)['peer_hint'],r.get('added_on',now),r['hash'])) if eligible else None
 
 
-def completion_order(known, rows, history, now):
+def completion_order(known, rows, history, now, *, policy=DEFAULT_POLICY):
     """Require a material measured improvement before a trial replaces its incumbent."""
     ordered=list(known)
     for row in known:
@@ -139,23 +141,23 @@ def completion_order(known, rows, history, now):
             result=entry.get(f'{kind}_trial_result',{})
             incumbent=rows.get(entry.get(f'{kind}_trial_replaces'))
             if (not incumbent or incumbent not in ordered or result.get('bytes',0)<=0
-                    or not 0<=now-result.get('at',0)<RATE_FRESH_SECONDS):continue
-            trial_values=estimate(row,entry,now)
-            previous=estimate(incumbent,history.get(incumbent['hash'],{}),now)
+                    or not 0<=now-result.get('at',0)<policy.rate_fresh_seconds):continue
+            trial_values=estimate(row,entry,now, policy=policy)
+            previous=estimate(incumbent,history.get(incumbent['hash'],{}),now, policy=policy)
             if (trial_values['has_measured_speed'] and previous['proven']
-                    and trial_values['score_seconds']>previous['score_seconds']*TRIAL_IMPROVEMENT
+                    and trial_values['score_seconds']>previous['score_seconds']*policy.trial_improvement
                     and ordered.index(row)<ordered.index(incumbent)):
                 ordered.remove(row);ordered.insert(ordered.index(incumbent)+1,row)
     return ordered
 
 
-def discover_swarm_slots(front, reasons, ready, rows, history, now, probe, trial, budget, metadata=None):
+def discover_swarm_slots(front, reasons, ready, rows, history, now, probe, trial, budget, metadata=None, *, policy=DEFAULT_POLICY):
     """Keep useful transfers; sample unknown swarms instead of filling with stalls."""
     def stalled(row):
         entry=history.get(row['hash'],{})
         return (row.get('state') in RUNNING_STATES and row.get('dlspeed',0)<=0
                 and now-max(entry.get('active_since',now),entry.get('last_progress_at',now))
-                >= SWARM_WARMUP_SECONDS)
+                >= policy.swarm_warmup_seconds)
     continuing=[r for r in ready if history.get(r['hash'],{}).get('swarm_trial_until',0)>now]
     protected={r['hash'] for r in (probe,trial,metadata) if r}
     within_budget=lambda r: budget is None or r.get('amount_left',0)<=budget
@@ -165,30 +167,30 @@ def discover_swarm_slots(front, reasons, ready, rows, history, now, probe, trial
     pool=sorted((r for r in ready if r['hash'] not in protected
                  and r.get('state')=='queuedDL' and within_budget(r)
                  and r.get('amount_left',0)>0
-                 and not estimate(r,history.get(r['hash'],{}),now)['proven']
+                 and not estimate(r,history.get(r['hash'],{}),now, policy=policy)['proven']
                  and history.get(r['hash'],{}).get('swarm_trial_retry_at',0)<=now
                  and r not in continuing),
-                key=lambda r:discovery_hint(r,history.get(r['hash'],{}),now))
+                key=lambda r:discovery_hint(r,history.get(r['hash'],{}),now, policy=policy))
     front=list(front);reasons=dict(reasons)
     continuing_ids={r['hash'] for r in continuing}
     replaceable=sorted((i for i,h in enumerate(front) if h not in protected|continuing_ids),
-                       key=lambda i:priority(rows[front[i]],history.get(front[i],{}),now),reverse=True)
+                       key=lambda i:priority(rows[front[i]],history.get(front[i],{}),now, policy=policy),reverse=True)
     missing=[r for r in continuing if r['hash'] not in front]
     for target,index in zip(missing,sorted(replaceable[:len(missing)])):
         reasons.pop(front[index],None);front[index]=target['hash']
     reserved_positions=[i for i,h in enumerate(front) if h in continuing_ids]
     for index,target in zip(reserved_positions,[r for r in continuing if r['hash'] in front]):
         front[index]=target['hash']
-    measured={h:estimate(rows[h],history.get(h,{}),now) for h in front if h not in protected}
+    measured={h:estimate(rows[h],history.get(h,{}),now, policy=policy) for h in front if h not in protected}
     speeds=[v['estimated_speed'] for v in measured.values() if v['viable'] and v['has_measured_speed']]
     # After sampling, challenge a very slow second transfer while retaining the
     # useful winner. Do not delay an imminent completion or a connecting sample.
     challenge=None
     if len(speeds)>=2 and pool:
         slower=[h for h,v in measured.items() if v['viable'] and v['has_measured_speed']
-                and v['estimated_speed']<min(SWARM_SLOW_SPEED,max(speeds)/4)
+                and v['estimated_speed']<min(policy.swarm_slow_speed,max(speeds)/4)
                 and (v['eta_seconds'] or 0)>600 and rows[h].get('progress',0)<0.85
-                and now-history.get(h,{}).get('active_since',now)>=SWARM_TRIAL_SECONDS
+                and now-history.get(h,{}).get('active_since',now)>=policy.swarm_trial_seconds
                 and history.get(h,{}).get('swarm_trial_until',0)<=now]
         challenge=max(slower,key=lambda h:measured[h]['score_seconds']) if slower else None
     chosen=[]
@@ -198,7 +200,7 @@ def discover_swarm_slots(front, reasons, ready, rows, history, now, probe, trial
             continue
         if any(r['hash']==identity for r in continuing):
             chosen.append(identity);reasons[identity]='Swarm discovery trial';continue
-        values=estimate(row,history.get(identity,{}),now)
+        values=estimate(row,history.get(identity,{}),now, policy=policy)
         if identity!=challenge and (values['viable'] or row.get('state') in RUNNING_STATES and not stalled(row)):
             continue
         target=next((r for r in continuing+pool if r['hash'] not in front),None)
@@ -210,7 +212,7 @@ def discover_swarm_slots(front, reasons, ready, rows, history, now, probe, trial
 
 
 def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget: float | None = None,
-               max_downloads: int = MAX_DOWNLOADS) -> dict:
+               max_downloads: int = MAX_DOWNLOADS, *, policy=DEFAULT_POLICY) -> dict:
     if max_downloads<=0:
         return dict(front=[],reasons={},order=[],up_next=[],swarm_trials=[],swarm_next=[],
                     metadata_trial=None,seed_trial=None,eligible=[])
@@ -224,7 +226,7 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
              and not (history.get(r['hash'],{}).get('swarm_trial_retry_at',0)>now
                       and history.get(r['hash'],{}).get('swarm_trial_result',{}).get('outcome')=='no_progress'
                       and r.get('dlspeed',0)<=0)]
-    ordered = sorted(ready,key=lambda r:priority(r,history.get(r['hash'],{}),now))
+    ordered = sorted(ready,key=lambda r:priority(r,history.get(r['hash'],{}),now, policy=policy))
     known = [r for r in ordered if r.get('amount_left',0)>0]
     unknown = [r for r in ordered if r.get('amount_left',0)<=0]
     repairing=[r for r in unknown if history.get(r['hash'],{}).get('metadata_repair_until',0)>now]
@@ -239,15 +241,15 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
         metadata=trial;trial=None
     # Hold a discovery reservation for its full sampling window. Do not choose
     # another swarm on every 30-second observation as speeds/seed counts vary.
-    seeded = [r for r in known if estimate(r,history.get(r['hash'],{}),now)['seeds']>=MIN_TRIAL_SEEDS
+    seeded = [r for r in known if estimate(r,history.get(r['hash'],{}),now, policy=policy)['seeds']>=policy.min_trial_seeds
               and (trial_budget is None or r['amount_left']<=trial_budget)]
     continuing = [r for r in ready if history.get(r['hash'],{}).get('seed_trial_until',0)>now]
     opportunities = sorted((r for r in seeded
                             if r.get('state') not in RUNNING_STATES
-                            and now-last_sample_at(history.get(r['hash'],{}),now)
-                            >= SEED_TRIAL_RETRY_SECONDS),
-                           key=lambda r:(-estimate(r,history.get(r['hash'],{}),now)['seeds'],
-                                         *priority(r,history.get(r['hash'],{}),now)))
+                            and now-last_sample_at(history.get(r['hash'],{}),now, policy=policy)
+                            >= policy.seed_trial_retry_seconds),
+                           key=lambda r:(-estimate(r,history.get(r['hash'],{}),now, policy=policy)['seeds'],
+                                         *priority(r,history.get(r['hash'],{}),now, policy=policy)))
     if not trial:
         reserved_swarm=any(history.get(r['hash'],{}).get('swarm_trial_until',0)>now for r in ready)
         trial = (min(continuing,key=lambda r:(history[r['hash']]['seed_trial_at'],r['hash']))
@@ -259,7 +261,7 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
     probes = [r for r in known if (not trial or r['hash']!=trial['hash'])
               and history.get(r['hash'],{}).get('swarm_trial_until',0)<=now
               and r.get('state') in RUNNING_STATES and r.get('dlspeed',0)<=0
-              and now-history.get(r['hash'],{}).get('active_since',now) < PROBE_SECONDS]
+              and now-history.get(r['hash'],{}).get('active_since',now) < policy.probe_seconds]
     probe_reason='Active probe window'
     if not probes:
         probe_reason='Older download trial'
@@ -281,22 +283,22 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
     # Keep a regular completion slot when metadata and a speed trial coexist.
     if metadata and max_downloads<=2+bool(trial):probe=None
     reserved = {r['hash'] for r in (trial,probe,metadata) if r}
-    regular=completion_order(known,rows,history,now)
+    regular=completion_order(known,rows,history,now, policy=policy)
     front = [r['hash'] for r in regular if r['hash'] not in reserved][:max(0,max_downloads-len(reserved))]
     if trial:
         if trial_reason=='Requested speed trial':front.insert(0,trial['hash'])
         else:
             front.append(trial['hash'])
             front=[r['hash'] for r in completion_order(
-                sorted((rows[h] for h in front),key=lambda r:priority(r,history.get(r['hash'],{}),now)),
-                rows,history,now)]
+                sorted((rows[h] for h in front),key=lambda r:priority(r,history.get(r['hash'],{}),now, policy=policy)),
+                rows,history,now, policy=policy)]
     if probe:front.append(probe['hash'])
     if metadata:front.insert(0,metadata['hash'])
     for r in ordered:
         if len(front)>=max_downloads:break
         if r.get('amount_left',0)<=0:continue
         if r['hash'] not in front:front.append(r['hash'])
-    reasons={h:('Completion score' if estimate(rows[h],history.get(h,{}),now)['viable']
+    reasons={h:('Completion score' if estimate(rows[h],history.get(h,{}),now, policy=policy)['viable']
                 else 'Limited source availability') for h in front}
     if probe:reasons[probe['hash']]=probe_reason
     if trial:reasons[trial['hash']]=trial_reason
@@ -305,7 +307,7 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
     # rather than leaving the 149-seeder candidate at its historical #133.
     up_next = [r['hash'] for r in opportunities if r['hash'] not in front]
     front,reasons,swarm_trials,swarm_next=discover_swarm_slots(
-        front,reasons,ready,rows,history,now,probe,trial,trial_budget,metadata)
+        front,reasons,ready,rows,history,now,probe,trial,trial_budget,metadata, policy=policy)
     up_next=[h for h in up_next if h not in front]
     order = list(dict.fromkeys(front+up_next+swarm_next+[r['hash'] for r in ordered]))[:max(QUEUE_PREVIEW,max_downloads)]
     return {'front':front,'reasons':reasons,'order':order,'up_next':up_next,
@@ -316,12 +318,12 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
             'eligible':[r['hash'] for r in ordered]}
 
 
-def queue_front(rows: dict, owned: dict, history: dict, now: float) -> list[str]:
-    return queue_plan(rows,owned,history,now)['front']
+def queue_front(rows: dict, owned: dict, history: dict, now: float, *, policy=DEFAULT_POLICY) -> list[str]:
+    return queue_plan(rows,owned,history,now, policy=policy)['front']
 
 
-def ranking_ready(state: dict, plan: dict, now: float) -> bool:
-    if not state.get('queue_front') or now-state.get('queue_ranked_at',0)>=300:
+def ranking_ready(state: dict, plan: dict, now: float, *, policy=DEFAULT_POLICY) -> bool:
+    if not state.get('queue_front') or now-state.get('queue_ranked_at',0)>=policy.ranking_interval_seconds:
         return True
     if plan.get('swarm_trials') and plan['front']!=state.get('queue_front'):
         return True  # Fixed discovery reservations prevent per-poll churn.
@@ -332,25 +334,25 @@ def ranking_ready(state: dict, plan: dict, now: float) -> bool:
                > state.get('queue_ranked_at',0) for h in plan['front'])
 
 
-def commit_plan(plan: dict, rows: dict, history: dict, now: float) -> None:
+def commit_plan(plan: dict, rows: dict, history: dict, now: float, *, policy=DEFAULT_POLICY) -> None:
     """Persist a fixed discovery deadline before submitting priority requests."""
     identity=plan.get('metadata_trial')
     if identity and identity in plan['front']:
         entry=history.setdefault(identity,{})
         if entry.get('metadata_trial_until',0)<=now:
-            entry.update(metadata_trial_at=now,metadata_trial_until=now+METADATA_TRIAL_SECONDS,
+            entry.update(metadata_trial_at=now,metadata_trial_until=now+policy.metadata_trial_seconds,
                          metadata_trial_active_seconds=0,metadata_trial_running=False)
     identity=plan.get('metadata_repair')
     if identity and identity in plan['front']:
         entry=history.setdefault(identity,{})
         if entry.get('metadata_repair_until',0)<=now:
-            entry.update(metadata_repair_at=now,metadata_repair_until=now+PROBE_SECONDS)
+            entry.update(metadata_repair_at=now,metadata_repair_until=now+policy.probe_seconds)
     displaced=[r for h,r in rows.items() if h in plan.get('eligible',[]) and h not in plan['front']
                and r.get('state') in RUNNING_STATES and r.get('state')!='forcedDL'
                and not r.get('force_start') and 'apollo-keep' not in str(r.get('tags','')).split(',')
-               and r.get('progress',1)<0.85 and estimate(r,history.get(h,{}),now)['proven']
-               and (estimate(r,history.get(h,{}),now)['eta_seconds'] or 0)>600]
-    incumbent=max(displaced,key=lambda r:priority(r,history.get(r['hash'],{}),now)) if displaced else None
+               and r.get('progress',1)<0.85 and estimate(r,history.get(h,{}),now, policy=policy)['proven']
+               and (estimate(r,history.get(h,{}),now, policy=policy)['eta_seconds'] or 0)>600]
+    incumbent=max(displaced,key=lambda r:priority(r,history.get(r['hash'],{}),now, policy=policy)) if displaced else None
     for identity in plan['front']:
         if plan['reasons'].get(identity)=='Requested speed trial':
             entry=history.setdefault(identity,{})
@@ -359,19 +361,19 @@ def commit_plan(plan: dict, rows: dict, history: dict, now: float) -> None:
     if identity:
         entry = history.setdefault(identity,{})
         if entry.get('seed_trial_until',0)<=now:
-            entry.update(seed_trial_at=now,seed_trial_until=now+SEED_TRIAL_SECONDS,
+            entry.update(seed_trial_at=now,seed_trial_until=now+policy.seed_trial_seconds,
                          seed_trial_start_completed=rows[identity].get('completed',0),
                          seed_trial_replaces=incumbent['hash'] if incumbent else None)
     for rank,identity in enumerate(plan.get('swarm_trials',[])):
         entry=history.setdefault(identity,{})
         if entry.get('swarm_trial_until',0)<=now:
-            entry.update(swarm_trial_at=now,swarm_trial_until=now+SWARM_TRIAL_SECONDS,
+            entry.update(swarm_trial_at=now,swarm_trial_until=now+policy.swarm_trial_seconds,
                          swarm_trial_start_completed=rows[identity].get('completed',0),
                          swarm_trial_active_seconds=0,swarm_trial_running=False,swarm_trial_rank=rank,
                          swarm_trial_replaces=incumbent['hash'] if incumbent else None)
 
 
-def observe(rows: dict, history: dict, now: float) -> None:
+def observe(rows: dict, history: dict, now: float, *, policy=DEFAULT_POLICY) -> None:
     for identity, row in rows.items():
         old = history.get(identity)
         completed = max(0, row.get('completed', 0))
@@ -393,18 +395,18 @@ def observe(rows: dict, history: dict, now: float) -> None:
             if row.get('amount_left',0)>0 or row.get('progress',0)>=1 or old['metadata_trial_until']<=now:
                 active=old.get('metadata_trial_active_seconds',0)
                 outcome=('metadata' if row.get('amount_left',0)>0 or row.get('progress',0)>=1
-                         else 'no_metadata' if active>=SWARM_MIN_SAMPLE_SECONDS else 'unobserved')
+                         else 'no_metadata' if active>=policy.swarm_min_sample_seconds else 'unobserved')
                 old['metadata_trial_result']={'at':now,'active_seconds':active,'outcome':outcome}
                 if outcome=='no_metadata':old['metadata_failures']=old.get('metadata_failures',0)+1
                 elif outcome=='metadata':old['metadata_failures']=0
-                old['metadata_retry_at']=now+(METADATA_RETRY_SECONDS if outcome=='no_metadata'
+                old['metadata_retry_at']=now+(policy.metadata_retry_seconds if outcome=='no_metadata'
                     else METADATA_UNOBSERVED_RETRY_SECONDS if outcome=='unobserved' else 0)
                 old['metadata_trial_until']=0
         if old.get('metadata_repair_until',0)>0 and (
                 row.get('amount_left',0)>0 or old['metadata_repair_until']<=now):
             old['metadata_repair_until']=0
-            old['metadata_retry_at']=now+(METADATA_RETRY_SECONDS if row.get('amount_left',0)<=0 else 0)
-        samples=[s for s in old.get('rate_samples',[]) if now-s['at']<=SWARM_TRIAL_SECONDS]
+            old['metadata_retry_at']=now+(policy.metadata_retry_seconds if row.get('amount_left',0)<=0 else 0)
+        samples=[s for s in old.get('rate_samples',[]) if now-s['at']<=policy.swarm_trial_seconds]
         running=row.get('state') in RUNNING_STATES
         if running and old.get('rate_sample_running') and 0<now-old['observed_at']<=60 and moved>=0:
             samples.append({'at':now,'seconds':elapsed,'bytes':moved})
@@ -418,10 +420,10 @@ def observe(rows: dict, history: dict, now: float) -> None:
             if old.get('swarm_trial_until',0)<=now:
                 active=old.get('swarm_trial_active_seconds',0)
                 sampled=max(0,completed-old.pop('swarm_trial_start_completed'))
-                outcome=('progress' if sampled else 'no_progress' if active>=SWARM_MIN_SAMPLE_SECONDS else 'unobserved')
+                outcome=('progress' if sampled else 'no_progress' if active>=policy.swarm_min_sample_seconds else 'unobserved')
                 old['swarm_trial_result']={'at':now,'bytes':sampled,'active_seconds':active,
                                           'rate':sampled/max(1,active),'outcome':outcome}
-                old['swarm_trial_retry_at']=now+(SWARM_RETRY_SECONDS if outcome!='unobserved' else 600)
+                old['swarm_trial_retry_at']=now+(policy.swarm_retry_seconds if outcome!='unobserved' else 600)
         if row.get('state') in RUNNING_STATES:
             if 'active_since' not in old:
                 old.update(active_since=now,last_probe_at=now)

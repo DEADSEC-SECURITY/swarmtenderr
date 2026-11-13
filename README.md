@@ -128,3 +128,43 @@ demo uses `demo / demo`, synthetic open-content torrents, working general/accoun
 flows and disabled real-client/SSO mutations. It uses its own volume.
 
 Licensed under MIT. No telemetry service or external account is required.
+
+### Interactive charts and optimizer tuning
+
+Both dashboard charts use locally bundled Apache ECharts 6.1.0 (Apache-2.0;
+license and notices ship with the image). Hover or tap to inspect exact values;
+drag the range handles to zoom, drag the plot to pan, or Ctrl-scroll to zoom.
+Download and Upload are clickable legend buttons. Click a completion bar to open
+that calendar period in history. The graph footer is intentionally hidden.
+Keyboard users can focus a graph and use arrows/Home/End to inspect values,
+plus/minus to zoom, `0` to reset, Escape to dismiss, and Enter on a completion
+to open its history. Zoom and series choices survive live observations and theme
+changes; signing out clears chart state. Unknown historical coverage remains
+unknown, and faded bars identify partial coverage in their tooltip.
+
+Settings → Optimization now exposes bounded ranking cadence, speed evidence,
+seeded/swarm/metadata trial windows, retry delays, seeder and useful-speed
+thresholds, completion-score improvement, unknown-size reservations and working
+buffers. Changes are persisted, audited and validated together before saving.
+An existing trial keeps its fixed deadline; updated windows govern new trials.
+Deployment defaults are also accepted through the typed Terraform module and
+`SWARMTENDERR_DEFAULTS_JSON`. Explicit deployment locks win over saved UI values.
+The existing force-start, manual-stop, upload and keep-tag protections remain.
+
+An external controller can optionally expose `/v1/settings` over a narrow local
+Unix socket using the documented `GuardSettings` OpenAPI contract. Configure
+`SWARMTENDERR_OPTIMIZER_CONTROL_SOCKET` alongside `SWARMTENDERR_OPTIMIZER_STATE`.
+The Terraform module accepts `optimizer_control_directory`, mounting that one
+directory read-only at `/run/optimizer`; the socket must permit UID/GID 10001.
+The application never mounts the Docker socket. Only administrators can access
+this connection, with the same origin/CSRF checks as other settings. The external
+owner advertises supported fields, performs validation and optimistic writes,
+and acknowledges the applied revision through its observer feed. The UI shows
+saved versus applied state. A disconnected or stale owner is reported explicitly.
+A write with an uncertain result is never retried automatically; reload first.
+Standalone policy is locked when an external owner is configured.
+
+Verify frontend supply-chain integrity without network access using
+`python -B components/swarmtenderr/tools/vendor_echarts.py`; refresh only with
+its explicit `--download` option. CI verifies the asset hashes, chart helper
+behavior, frontend syntax and the API schema before building either architecture.

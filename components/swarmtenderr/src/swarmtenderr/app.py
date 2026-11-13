@@ -16,6 +16,7 @@ from . import __version__
 from .analytics import Analytics
 from .auth import Auth, AuthError, COOKIE, ROLES
 from .observer import Observer
+from .optimizer_settings import OptimizerSettings
 from .qbit import Qbit, UpstreamError
 from .runtime import Runtime
 from .secrets import SecretVault
@@ -86,7 +87,7 @@ class Application:
         status, data, content_type, extra = 200, {}, "application/json", []
         path, method = environ.get("PATH_INFO", "/"), environ.get("REQUEST_METHOD", "GET")
         try:
-            if method == "GET" and path in {"/", "/app.js", "/style.css", "/logo.svg"}:
+            if method == "GET" and path in {"/", "/app.js", "/style.css", "/logo.svg", "/charts.js", "/echarts-6.1.0.min.js"}:
                 filename = "index.html" if path == "/" else path[1:]
                 content_type = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "svg": "image/svg+xml"}[filename.rsplit(".", 1)[1]]
                 data = (Path(__file__).parent / "static" / filename).read_bytes()
@@ -156,6 +157,16 @@ class Application:
                             extra.append(("Content-Disposition", 'attachment; filename="swarmtenderr-completions.csv"'))
                         else:
                             data = result
+                    elif path == "/api/v1/optimizer/settings" and method in {"GET", "PATCH"}:
+                        self.require(user, "admin")
+                        if self.settings.demo or not self.settings.optimizer_control_socket:
+                            raise AuthError("Active guard settings are not connected", 403)
+                        data = OptimizerSettings(self.settings.optimizer_control_socket).request(
+                            method, payload if method == "PATCH" else None, user["username"])
+                        if method == "PATCH":
+                            self.store.audit("guard.settings.updated", user["username"],
+                                {"keys": sorted(set(payload.get("changes", {})) | set(payload.get("reset", [])))})
+                            self.observer.wake.set()
                     elif path == "/api/v1/settings" and method in {"GET", "PATCH"}:
                         self.require(user, "admin")
                         if method == "PATCH":

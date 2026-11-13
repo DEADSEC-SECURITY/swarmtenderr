@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swarmtenderr API",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Single-installation administration with cookie sessions, role checks, CSRF, durable completion records and write-only integration secrets. WebSocket /api/v1/live uses the same session cookie and exact Origin, sends snapshot and heartbeat frames, and closes 4401 after revocation."
   },
   "servers": [
@@ -2033,6 +2033,202 @@
           }
         }
       }
+    },
+    "/api/v1/optimizer/settings": {
+      "get": {
+        "operationId": "get__api_v1_optimizer_settings",
+        "summary": "Read active guard settings and applied acknowledgement",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Guard unavailable or write confirmation uncertain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch__api_v1_optimizer_settings",
+        "summary": "Save active guard tuning through the configured local owner",
+        "x-minimum-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Successful result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission, origin or CSRF denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable dependency",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Guard unavailable or write confirmation uncertain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "changes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "reset": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured browser origin"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2232,6 +2428,101 @@
             "writeOnly": true,
             "maxLength": 4096,
             "description": "Empty input preserves the configured credential; never returned."
+          },
+          "ranking_interval_seconds": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 3600
+          },
+          "probe_seconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 7200
+          },
+          "retry_seconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 86400
+          },
+          "rate_fresh_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400
+          },
+          "seed_trial_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 1800
+          },
+          "seed_trial_retry_seconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 86400
+          },
+          "min_trial_seeds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "min_proven_speed_kib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10240
+          },
+          "swarm_trial_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 1800
+          },
+          "swarm_warmup_seconds": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 1800
+          },
+          "swarm_min_sample_seconds": {
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 600
+          },
+          "swarm_retry_seconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 86400
+          },
+          "swarm_slow_speed_kib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10240
+          },
+          "metadata_trial_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 1800
+          },
+          "metadata_retry_seconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 86400
+          },
+          "minimum_rate_sample_seconds": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 600
+          },
+          "trial_improvement_percent": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 50
+          },
+          "unknown_size_gib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "other_buffer_gib": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
           }
         },
         "additionalProperties": false
@@ -2337,6 +2628,101 @@
                   "viewer",
                   "operator"
                 ]
+              },
+              "ranking_interval_seconds": {
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 3600
+              },
+              "probe_seconds": {
+                "type": "integer",
+                "minimum": 300,
+                "maximum": 7200
+              },
+              "retry_seconds": {
+                "type": "integer",
+                "minimum": 300,
+                "maximum": 86400
+              },
+              "rate_fresh_seconds": {
+                "type": "integer",
+                "minimum": 60,
+                "maximum": 86400
+              },
+              "seed_trial_seconds": {
+                "type": "integer",
+                "minimum": 60,
+                "maximum": 1800
+              },
+              "seed_trial_retry_seconds": {
+                "type": "integer",
+                "minimum": 300,
+                "maximum": 86400
+              },
+              "min_trial_seeds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "min_proven_speed_kib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10240
+              },
+              "swarm_trial_seconds": {
+                "type": "integer",
+                "minimum": 60,
+                "maximum": 1800
+              },
+              "swarm_warmup_seconds": {
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 1800
+              },
+              "swarm_min_sample_seconds": {
+                "type": "integer",
+                "minimum": 15,
+                "maximum": 600
+              },
+              "swarm_retry_seconds": {
+                "type": "integer",
+                "minimum": 300,
+                "maximum": 86400
+              },
+              "swarm_slow_speed_kib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10240
+              },
+              "metadata_trial_seconds": {
+                "type": "integer",
+                "minimum": 60,
+                "maximum": 1800
+              },
+              "metadata_retry_seconds": {
+                "type": "integer",
+                "minimum": 300,
+                "maximum": 86400
+              },
+              "minimum_rate_sample_seconds": {
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 600
+              },
+              "trial_improvement_percent": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 50
+              },
+              "unknown_size_gib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "other_buffer_gib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
               }
             },
             "required": [
@@ -2358,7 +2744,26 @@
               "sso_client_id",
               "sso_label",
               "sso_allowed_groups",
-              "sso_default_role"
+              "sso_default_role",
+              "ranking_interval_seconds",
+              "probe_seconds",
+              "retry_seconds",
+              "rate_fresh_seconds",
+              "seed_trial_seconds",
+              "seed_trial_retry_seconds",
+              "min_trial_seeds",
+              "min_proven_speed_kib",
+              "swarm_trial_seconds",
+              "swarm_warmup_seconds",
+              "swarm_min_sample_seconds",
+              "swarm_retry_seconds",
+              "swarm_slow_speed_kib",
+              "metadata_trial_seconds",
+              "metadata_retry_seconds",
+              "minimum_rate_sample_seconds",
+              "trial_improvement_percent",
+              "unknown_size_gib",
+              "other_buffer_gib"
             ],
             "additionalProperties": false
           },
@@ -2410,15 +2815,25 @@
               },
               "demo": {
                 "type": "boolean"
+              },
+              "optimizer_control": {
+                "type": "boolean"
               }
             },
             "required": [
               "database",
               "public_url",
               "external_optimizer",
-              "demo"
+              "demo",
+              "optimizer_control"
             ],
             "additionalProperties": false
+          },
+          "optimizer_fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptimizerField"
+            }
           }
         },
         "required": [
@@ -2427,7 +2842,8 @@
           "secrets",
           "sources",
           "locked",
-          "deployment"
+          "deployment",
+          "optimizer_fields"
         ],
         "additionalProperties": false
       },
@@ -2950,6 +3366,167 @@
           "audit"
         ],
         "additionalProperties": false
+      },
+      "OptimizerField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "minimum": {
+            "type": "integer"
+          },
+          "maximum": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "help": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "default": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "minimum",
+          "maximum",
+          "label",
+          "help",
+          "group",
+          "default"
+        ],
+        "additionalProperties": false
+      },
+      "GuardSettings": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "defaults": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "ui",
+                "deployment"
+              ]
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptimizerField"
+            }
+          },
+          "audit": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "number"
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "changes": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "reset": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "at",
+                "actor",
+                "keys",
+                "changes",
+                "reset"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "applied_revision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "observed_at": {
+            "type": "number"
+          },
+          "healthy": {
+            "type": "boolean"
+          },
+          "requested_slots": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "applied_slots": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "owner",
+          "revision",
+          "values",
+          "defaults",
+          "locked",
+          "sources",
+          "fields",
+          "audit",
+          "applied_revision",
+          "observed_at",
+          "healthy",
+          "requested_slots",
+          "applied_slots"
+        ]
       }
     }
   }

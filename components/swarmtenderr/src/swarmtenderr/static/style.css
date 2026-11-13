@@ -1383,3 +1383,14 @@ dialog .muted {
 }
 
 .skip-link{position:fixed;top:8px;left:8px;transform:translateY(-200%);z-index:1000;padding:10px 14px;border-radius:6px;background:var(--accent);color:var(--bg);font-weight:600}.skip-link:focus{transform:none}.detail-activity{margin-block:20px}.detail-activity h3{font-size:14px;margin-bottom:10px}.detail-action{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding-block:8px;font-size:12px}.detail-action time{color:var(--muted)}
+
+/* Interactive charts keep controls in the plot and values in hover tooltips. */
+.chart { height: 265px; padding: 0; min-width: 0; }
+.chart-canvas { width: 100%; height: 100%; }
+.chart-series { border: 0; background: transparent; padding: 4px; font: inherit; cursor: pointer; }
+.chart-series[aria-pressed="false"] { opacity: .4; text-decoration: line-through; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.tuning-group { margin-top: 16px; border-top: 1px solid var(--line); }
+.tuning-group > summary { cursor: pointer; font-weight: 600; padding: 18px 0; }
+.guard-status { margin: 16px 0; color: var(--muted); }
