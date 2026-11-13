@@ -1,0 +1,9 @@
+{
+  "source": "Apollo Media accepted scheduler",
+  "baseline_sha256": {
+    "admission.py": "6bab9c9b41cf06db1e5bf929ce6596cc95f49c121496e6c2b85bc47f9041b8a1",
+    "space_planner.py": "aa6120656b90da91425ac2b868e7d5b1f2f5003d332598f365cbdb117a55a369",
+    "optimizer_observability.py": "673d3d2a39fd5882048773c6e1df9b307ae8e755fc9d6d41c3cb81b09a8efc0d"
+  },
+  "note": "Initial extraction preserves source bytes; portable configuration changes follow separately."
+}
