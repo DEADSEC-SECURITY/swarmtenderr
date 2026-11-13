@@ -50,6 +50,7 @@
       <p class="login-footer">Swarmtenderr <span id="login-version"></span></p>
     </section>
     <div id="application" class="application" hidden>
+      <a class="skip-link" href="#page-title">Skip to content</a>
       <aside class="sidebar">
         <a class="brand" href="/"
           ><img src="/logo.svg" width="30" height="30" alt="" /><strong
@@ -91,7 +92,7 @@
       <main>
         <header class="topbar">
           <div>
-            <h1 id="page-title">Overview</h1>
+            <h1 id="page-title" tabindex="-1">Overview</h1>
             <span id="connection" class="muted small" aria-live="polite"
               >Connecting to live updates…</span
             >
@@ -474,6 +475,7 @@
       <div id="detail-state"></div>
       <dl id="detail-values" class="definition-grid"></dl>
       <div id="detail-policy" class="inset" hidden></div>
+      <section class="detail-activity"><h3>Recent activity</h3><div id="detail-actions"></div></section>
       <p id="control-note" class="muted"></p>
       <div class="button-row" id="torrent-actions">
         <button class="button" data-action="prioritize">Move to top</button

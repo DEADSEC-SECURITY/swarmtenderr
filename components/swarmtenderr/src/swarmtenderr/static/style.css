@@ -1381,3 +1381,5 @@ dialog .muted {
   width: auto;
   accent-color: var(--accent);
 }
+
+.skip-link{position:fixed;top:8px;left:8px;transform:translateY(-200%);z-index:1000;padding:10px 14px;border-radius:6px;background:var(--accent);color:var(--bg);font-weight:600}.skip-link:focus{transform:none}.detail-activity{margin-block:20px}.detail-activity h3{font-size:14px;margin-bottom:10px}.detail-action{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding-block:8px;font-size:12px}.detail-action time{color:var(--muted)}

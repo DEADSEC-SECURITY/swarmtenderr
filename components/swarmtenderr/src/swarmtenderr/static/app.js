@@ -339,6 +339,7 @@ function classification(row) {
 }
 function render() {
   if (!state.user || !state.status) return;
+  const focusedKey = document.activeElement?.dataset?.focusKey;
   const status = state.status,
     snapshot = status.snapshot,
     rows = snapshot?.torrents || [],
@@ -405,6 +406,10 @@ function render() {
   renderActivity();
   renderOptimizer(snapshot?.optimizer);
   if ($("details-dialog").open) renderDetails();
+  if (focusedKey) {
+    const target = [...document.querySelectorAll("[data-focus-key]")].find(element => element.dataset.focusKey === focusedKey && element.getClientRects().length);
+    target?.focus({preventScroll:true});
+  }
 }
 function updateFreshness() {
   if (!state.status) return;
@@ -435,6 +440,7 @@ function renderCategories(categories) {
   for (const category of categories.slice(0, 8)) {
     const button = node("button", null, "category-row");
     button.type = "button";
+    button.dataset.focusKey = "category:" + category.category;
     button.append(
       node("strong", category.category || "Uncategorized"),
       node("span", count(category.count) + " completed"),
@@ -480,6 +486,7 @@ function renderQueueSummary(rows) {
   $("queue-summary").replaceChildren();
   for (const [label, value, filter] of values) {
     const button = node("button");
+    button.dataset.focusKey = "queue:" + filter;
     button.append(node("strong", count(value)), node("span", label));
     button.addEventListener("click", () => {
       $("torrent-filter").value = filter;
@@ -654,6 +661,7 @@ function detailsCell(row) {
   const td = node("td"),
     button = node("button", "›", "icon-button");
   button.dataset.torrent = row.hash;
+  button.dataset.focusKey = "torrent:" + row.hash;
   button.setAttribute("aria-label", "Details for " + row.name);
   button.addEventListener("click", () => openDetails(row));
   td.append(button);
@@ -855,6 +863,15 @@ function renderDetails() {
   $("detail-policy").textContent = policy
     ? `${row.decision}: ${row.reason}`
     : "";
+  const recentActions = state.activity.actions.filter(action => action.torrent === row.hash).slice(0,5);
+  const actions = $("detail-actions");
+  actions.replaceChildren();
+  if (!recentActions.length) actions.append(node("p","No actions in recent activity.","muted"));
+  for (const action of recentActions){
+    const item = node("div",null,"detail-action");
+    item.append(node("time",date(action.at)),node("span",action.action),badge(action.outcome,action.outcome === "confirmed" ? "good" : action.outcome === "uncertain" ? "warning" : ""));
+    actions.append(item);
+  }
   let reason = "";
   if (!current) reason = "This torrent is no longer in the client.";
   else if (row.protected)
