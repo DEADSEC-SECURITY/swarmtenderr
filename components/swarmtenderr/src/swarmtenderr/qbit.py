@@ -49,7 +49,7 @@ class Qbit:
                     self.cookies.clear()
                     password = self._password if self._password is not None else Path(self.password_file).read_text().strip()
                     self._request("auth/login", {"username": self.username, "password": password})
-                    if not any(cookie.name == "SID" for cookie in self.cookies):
+                    if not any((cookie.name == "SID" or re.fullmatch(r"QBT_SID_[0-9]{1,5}", cookie.name)) for cookie in self.cookies):
                         raise UpstreamError("qBittorrent rejected authentication")
                     self.authenticated = True
                 raw = self._request(path, form)

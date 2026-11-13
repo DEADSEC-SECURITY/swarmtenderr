@@ -1781,12 +1781,18 @@ $("history-uncategorized").addEventListener("change", () => {
   $("history-category").disabled = $("history-uncategorized").checked;
 });
 
-document
-  .querySelectorAll("dialog")
-  .forEach((dialog) =>
-    dialog.addEventListener("close", () =>
-      dialog
-        .querySelectorAll('input[type="password"]')
-        .forEach((input) => (input.value = "")),
-    ),
-  );
+document.querySelectorAll("dialog").forEach((dialog) =>
+  dialog.addEventListener("close", () => {
+    dialog
+      .querySelectorAll('input[type="password"]')
+      .forEach((input) => (input.value = ""));
+    if (dialog.id === "details-dialog" && state.user && !state.loggingOut) {
+      const key = "torrent:" + state.selectedTorrent?.hash;
+      const trigger = [...document.querySelectorAll("[data-focus-key]")].find(
+        (element) =>
+          element.dataset.focusKey === key && element.getClientRects().length,
+      );
+      trigger?.focus({ preventScroll: true });
+    }
+  }),
+);

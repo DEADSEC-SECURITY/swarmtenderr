@@ -59,6 +59,8 @@ jobs:
           docker load --input /tmp/swarmtenderr-${{ matrix.architecture }}.tar
       - name: Test the installed artifact on SQLite and PostgreSQL
         run: python -B components/swarmtenderr/tests/test_container_acceptance.py swarmtenderr-ci:tested
+      - name: Verify real qBittorrent controls and generated peer transfer
+        run: python -B components/swarmtenderr/tests/test_qbit_acceptance.py swarmtenderr-ci:tested
       - name: Validate Terraform and deployment contracts
         run: |
           docker run --rm -v "$PWD/modules/swarmtenderr:/module" -w /module hashicorp/terraform:1.15.7 fmt -check -recursive

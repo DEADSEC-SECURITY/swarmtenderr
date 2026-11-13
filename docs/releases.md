@@ -9,7 +9,9 @@ Pull requests and main run native amd64/arm64 jobs. Each validates JavaScript an
 OpenAPI, builds one OCI archive with source labels, SBOM and provenance, loads that
 archive and tests the installed runtime on SQLite and PostgreSQL. Real HTTP/socket
 and restart checks follow the identity, OIDC failure, history, settings, migration,
-policy and recovery suites. Terraform formatting, validation and mocked plans are
+policy and recovery suites. Two digest-pinned official qBittorrent clients on a
+network without Internet access transfer generated fixture bytes and verify native
+controls, protection checks, enforce/observe restoration and completion accounting. Terraform formatting, validation and mocked plans are
 required. Fixable high/critical image vulnerabilities fail the job. Accepted OCI
 archives are retained as workflow artifacts for 14 days.
 

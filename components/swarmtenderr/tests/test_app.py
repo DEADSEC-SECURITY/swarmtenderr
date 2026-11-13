@@ -29,6 +29,7 @@ class QbitHttpTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.requests, self.progress, self.tags, self.force = [], .5, "", False
+        self.cookie_name = "SID"
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -40,12 +41,12 @@ class QbitHttpTests(unittest.TestCase):
                 owner.requests.append(("POST", self.path, form))
                 self.send_response(200)
                 if self.path.endswith("auth/login"):
-                    self.send_header("Set-Cookie", "SID=fixture-session; HttpOnly; Path=/")
+                    self.send_header("Set-Cookie", owner.cookie_name + "=fixture-session; HttpOnly; Path=/")
                 self.end_headers()
 
             def do_GET(self):
                 owner.requests.append(("GET", self.path, {}))
-                if "SID=fixture-session" not in self.headers.get("Cookie", ""):
+                if owner.cookie_name + "=fixture-session" not in self.headers.get("Cookie", ""):
                     self.send_response(403)
                     self.end_headers()
                     return
@@ -67,6 +68,12 @@ class QbitHttpTests(unittest.TestCase):
         self.client.action(HASH, "prioritize")
         self.assertEqual(self.requests[-1], ("POST", "/api/v2/torrents/topPrio", {"hashes": [HASH]}))
         self.assertEqual(sum(path.endswith("auth/login") for _, path, _ in self.requests), 1)
+
+    def test_port_scoped_client_cookie_is_supported(self):
+        self.cookie_name = "QBT_SID_8080"
+        self.client.torrents()
+        self.client.action(HASH, "pause")
+        self.assertEqual(self.requests[-1][1], "/api/v2/torrents/stop")
 
     def test_protected_transfers_make_no_control_post(self):
         for progress, tags, force in ((1, "", False), (.5, "apollo-keep", False), (.5, "swarmtenderr-keep", False), (.5, "", True)):

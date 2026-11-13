@@ -308,6 +308,23 @@ class CompletionSessionTests(unittest.TestCase):
             self.assertEqual(store.completions()['total'], 3)
             observe(now+100, [])
             self.assertEqual(store.completions()['total'], 3)
+    def test_final_download_counter_can_arrive_after_complete_progress(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(database_url(self, Path(directory)/'state.db'))
+            store.initialize()
+            now = time.time() - 120
+            row = {'hash': HASH, 'name': 'Linux', 'progress': 0, 'size': 1024,
+                   'downloaded': 0, 'added_on': now-1, 'completion_on': -1}
+            def observe(offset, **fields):
+                store.snapshot({'observed_at': now+offset, 'download_speed': 0, 'upload_speed': 0}, [row | fields])
+            observe(0)
+            observe(1, progress=1, completion_on=now+1)
+            self.assertEqual(store.completions()['total'], 0)
+            observe(2, progress=1, completion_on=now+1, downloaded=1024)
+            self.assertEqual(store.completions()['total'], 1)
+            observe(3, progress=1, completion_on=now+1, downloaded=1024)
+            self.assertEqual(store.completions()['total'], 1)
+
     def test_old_completion_rechecked_during_first_connection_can_backfill_later(self):
         with tempfile.TemporaryDirectory() as directory:
             store = Store(database_url(self, Path(directory)/'state.db'))

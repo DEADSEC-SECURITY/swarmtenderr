@@ -199,7 +199,12 @@ class Store:
                 previous = previous_sessions.get(identity)
                 downloaded, progress = max(0, row.get("downloaded", 0)), row.get("progress", 0)
                 moved = (previous[2] + max(0, downloaded - previous[0])) if previous and previous[1] < 1 else previous[2] if previous else 0
-                saved_sessions.append((identity, downloaded, progress, moved, now))
+                # qBittorrent can report progress=1 before its downloaded-byte
+                # counter catches up. Retain incomplete-session evidence across
+                # those separately refreshed fields; rechecks without new bytes
+                # still contribute zero and cannot create repeat completions.
+                minimum_progress = min(previous[1], progress) if previous else progress
+                saved_sessions.append((identity, downloaded, minimum_progress, moved, now))
                 if not isinstance(completed, (int, float)) or not 0 < completed <= now + 60 or progress < 1:
                     continue
                 repeated = str(row.get("hash", ""))[:64] in repeated_hashes

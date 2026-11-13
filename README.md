@@ -6,8 +6,8 @@ SQLite is the default; an existing PostgreSQL database is supported by the same
 image. One installation manages one client and one set of users.
 
 The 0.2 completion work is a release candidate. A candidate passing unit tests is
-not a production release. See the acceptance record before selecting a published
-image. Source lives here; Apollo owns its deployment and consumes pinned releases.
+not a production release. See the [acceptance contract](docs/acceptance.md) and release evidence before
+selecting a published image. Source lives here; Apollo owns its deployment and consumes pinned releases.
 
 ## Install
 
