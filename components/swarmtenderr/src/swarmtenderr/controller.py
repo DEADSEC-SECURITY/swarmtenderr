@@ -28,6 +28,10 @@ class Controller:
         # Persist intent before HTTP; a lost response must never trigger a retry.
         if not self.store.controller_lease(self.owner):
             raise RuntimeError('Controller ownership changed')
+        if self.store.meta('config_revision', 0) != state.get('configuration_revision'):
+            state['queue_ranked_at'] = 0
+            self.store.save_policy(state)
+            raise RuntimeError('Settings changed before the optimizer request')
         identity = self.store.begin_action(target, action, 'optimizer')
         state.setdefault('pending_mutations', []).append({'id': identity, 'action': action, 'target': target, 'at': time.time(), 'expected': expected})
         self.store.save_policy(state)
@@ -35,7 +39,7 @@ class Controller:
             operation()
         except Exception:
             self.store.finish_action(identity, 'uncertain')
-            state['fault_revision'] = state.get('configuration_revision')
+            state['fault_ack_revision'] = state.get('policy_ack_revision')
             state['fault_mode'] = state.get('mode')
             state['mutation_fault'] = 'A request could not be confirmed. Switch to Observe, inspect qBittorrent, then explicitly re-enable enforcement.'
             self.store.save_policy(state)
@@ -45,7 +49,7 @@ class Controller:
     def poll(self, client, raw, config):
         now = time.time()
         if not self.store.controller_lease(self.owner):
-            return {'connected': True, 'mode': 'observe', 'reason': 'Another instance owns policy evaluation', 'rows': [], 'events': []}
+            return {'connected': True, 'mode': 'observe', 'effective_status': 'standby', 'reason': 'Another instance owns policy evaluation', 'rows': [], 'events': []}
         state = self.store.policy_state()
         rows = {row['hash']: row for row in raw if isinstance(row.get('hash'), str)}
         history = state.setdefault('history', {})
@@ -70,6 +74,7 @@ class Controller:
             free, used, library, config['work_budget_gib'] * 1024**3, now,
             reserve=config['minimum_free_gib'] * 1024**3,
             library_reserve=config['library_reserve_gib'] * 1024**3)
+        capacity['native_slots'] = preferences.get('max_active_downloads')
         state['space_plan'] = capacity
         plan = copy.deepcopy(proposed)
         plan['front'] = capacity['selected']
@@ -85,23 +90,42 @@ class Controller:
                 pending.append(request)
                 if now - request['at'] > 120:
                     self.store.finish_action(request['id'], 'uncertain')
+                    state['fault_ack_revision'] = state.get('policy_ack_revision')
+                    state['fault_mode'] = state.get('mode')
                     state['mutation_fault'] = 'An optimizer request remains unconfirmed. Switch to Observe and inspect the native queue before enabling enforcement again.'
         state['pending_mutations'] = pending
         mode = config['policy_mode']
-        state['mode'], state['configuration_revision'] = mode, config['revision']
+        previous_mode = state.get('mode', 'observe')
+        previous_ack = state.get('policy_ack_revision', 0)
+        policy_revision = config.get('policy_revision', 0)
+        ack_revision = config.get('policy_ack_revision', 0)
+        if state.get('policy_revision', 0) != policy_revision:
+            state['queue_ranked_at'] = 0
+        state.update(mode=mode, configuration_revision=config['revision'],
+                     policy_revision=policy_revision, policy_ack_revision=ack_revision)
         reason = state.get('mutation_fault', '')
+        effective = 'observe' if mode == 'observe' else 'blocked'
         native = preferences.get('max_active_downloads')
-        if mode == 'observe' and state.get('mutation_fault') and state.get('fault_mode') == 'observe' and state.get('fault_revision') == config['revision']:
-            reason = state['mutation_fault']
-        elif mode == 'observe':
-            # Restore only a ceiling whose value still proves our ownership.
-            ceiling = state.get('ceiling')
-            if ceiling and native == ceiling['applied'] and native != ceiling['original']:
-                self.mutate(client, state, 'download ceiling', ceiling['original'], lambda: client.download_cap(ceiling['original'], expected=native))
-            state.pop('ceiling', None)
-            state.pop('mutation_fault', None)
+        if mode == 'observe' and (previous_mode != 'observe' or previous_ack != ack_revision):
+            # Explicitly returning/resetting to Observe acknowledges old uncertain
+            # requests. General settings changes never acknowledge a mutation.
+            for request in state.get('pending_mutations', []):
+                self.store.finish_action(request['id'], 'uncertain')
             state['pending_mutations'] = []
-            reason = 'Observe mode: recommendations only'
+            state.pop('mutation_fault', None)
+            reason = ''
+        if mode == 'observe' and state.get('mutation_fault'):
+            effective, reason = 'blocked', state['mutation_fault']
+        elif mode == 'observe':
+            ceiling = state.get('ceiling')
+            if ceiling and native == ceiling['applied'] and native != ceiling['original'] and not state.get('pending_mutations'):
+                self.mutate(client, state, 'download ceiling', ceiling['original'], lambda: client.download_cap(ceiling['original'], expected=native))
+            if ceiling and native != ceiling['applied']:
+                state.pop('ceiling', None)
+            if state.get('pending_mutations'):
+                effective, reason = 'restoring', 'Restoring the previous native download ceiling; waiting for confirmation'
+            else:
+                reason = 'Observe mode: recommendations only'
         else:
             if not config['managed_categories']:
                 reason = 'Choose managed categories before enforcement'
@@ -130,7 +154,9 @@ class Controller:
                     original = state.get('ceiling', {}).get('original', native)
                     state['ceiling'] = {'original': original, 'applied': target}
                     self.mutate(client, state, 'download ceiling', target, lambda: client.download_cap(target, expected=native))
-                reason = 'Enforcing native queue priorities and download capacity'
+                effective, reason = 'enforcing', 'Enforcing native queue priorities and download capacity'
+            if state.get('pending_mutations') and not state.get('mutation_fault'):
+                effective, reason = 'pending', 'Requests accepted; waiting for qBittorrent confirmation'
         optimizer_observability.snapshot(state, rows, owned, plan, now)
         self.store.save_policy(state)
         for item in state['optimizer']['rows']:
@@ -138,5 +164,5 @@ class Controller:
             item['trial_until'] = max(entry.get('swarm_trial_until', 0), entry.get('metadata_trial_until', 0), entry.get('seed_trial_until', 0))
             item['cooldown_until'] = max(entry.get('deferred_until', 0), entry.get('swarm_trial_retry_at', 0), entry.get('metadata_retry_at', 0))
         result = dict(state['optimizer'], connected=True, owner='swarmtenderr', stale=False, observed_at=now,
-                      mode=mode, reason=reason, capacity=capacity, events=state.get('optimizer_events', [])[-50:])
+                      mode=mode, effective_status=effective, reason=reason, capacity=capacity, events=state.get('optimizer_events', [])[-50:])
         return result

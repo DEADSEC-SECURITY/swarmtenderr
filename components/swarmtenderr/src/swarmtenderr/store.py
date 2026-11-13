@@ -26,7 +26,7 @@ class Store:
             raise ValueError("Use sqlite:/// or postgresql://")
 
     @contextmanager
-    def connection(self, serialize=False):
+    def connection(self, serialize=False, consistent=False):
         if self.postgres:
             import psycopg
             connection = psycopg.connect(self.url, connect_timeout=5)
@@ -40,6 +40,8 @@ class Store:
                     connection.execute("SELECT pg_advisory_xact_lock(710342907)")
                 else:
                     connection.execute("BEGIN IMMEDIATE")
+            elif consistent:
+                connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY" if self.postgres else "BEGIN")
             yield connection
             connection.commit()
         except BaseException:
@@ -113,10 +115,13 @@ class Store:
     def set_meta(self, c, key, value):
         self.execute(c, "INSERT INTO swarmtenderr_meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, json.dumps(value)))
 
-    def config(self):
-        with self.connection() as c:
+    def config(self, include_policy=False):
+        with self.connection(consistent=True) as c:
             rows = self.execute(c, "SELECT key, value FROM swarmtenderr_configuration").fetchall()
-            return self.meta("config_revision", 0, c), {key: json.loads(value) for key, value in rows}
+            result = (self.meta("config_revision", 0, c), {key: json.loads(value) for key, value in rows})
+            if include_policy:
+                result += (self.meta("policy_revision", 0, c), self.meta("policy_ack_revision", 0, c))
+            return result
 
     def save_config(self, changes, reset, revision, actor):
         with self.connection(serialize=True) as c:
@@ -128,6 +133,11 @@ class Store:
                 self.execute(c, "DELETE FROM swarmtenderr_configuration WHERE key=?", (key,))
             if (set(changes) | set(reset)) & {"sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_allowed_groups"}:
                 self.execute(c, "DELETE FROM swarmtenderr_sessions WHERE user_id IN (SELECT id FROM swarmtenderr_users WHERE issuer <> '')")
+            policy_keys = {"policy_mode", "managed_categories", "excluded_tags", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"}
+            if (set(changes) | set(reset)) & policy_keys:
+                self.set_meta(c, "policy_revision", self.meta("policy_revision", 0, c) + 1)
+            if "policy_mode" in set(changes) | set(reset):
+                self.set_meta(c, "policy_ack_revision", self.meta("policy_ack_revision", 0, c) + 1)
             self.set_meta(c, "config_revision", revision + 1)
             self.audit("settings.updated", actor, {"keys": sorted(set(changes) | set(reset))}, c)
         return revision + 1

@@ -155,3 +155,40 @@ class PolicyTests(unittest.TestCase):
         self.assertGreater(capacity['external_reserved_bytes'], 100*GIB)
         capacity = space_planner.plan(rows, owned, {}, 3, proposed, 500*GIB, 2*GIB, 51*GIB, 500*GIB, time.time())
         self.assertEqual(capacity['selected'], [])
+
+    def test_observe_restoration_is_confirmed_on_a_later_observation(self):
+        client = Client([row(1)], free=20*GIB)
+        enforced = self.controller.poll(client, client.rows, self.config | {'policy_mode': 'enforce'})
+        self.assertEqual(enforced['effective_status'], 'pending')
+        result = self.controller.poll(client, client.rows, self.config)
+        self.assertEqual(result['effective_status'], 'restoring')
+        self.assertEqual(client.prefs['max_active_downloads'], 5)
+        result = self.controller.poll(client, client.rows, self.config)
+        self.assertEqual(result['effective_status'], 'observe')
+        self.assertTrue(all(action['outcome'] == 'confirmed' for action in self.app.store.history()['actions']))
+
+    def test_general_settings_do_not_retry_an_uncertain_restore(self):
+        client = Client([row(1)], free=20*GIB)
+        self.controller.poll(client, client.rows, self.config | {'policy_mode': 'enforce'})
+        client.fail = True
+        with self.assertRaises(TimeoutError):
+            self.controller.poll(client, client.rows, self.config)
+        count = len(client.calls)
+        self.app.runtime.save({'timezone': 'Europe/London'}, 0, 'fixture')
+        result = self.controller.poll(client, client.rows, self.app.runtime.values() | {'managed_categories': ['linux']})
+        self.assertEqual(result['effective_status'], 'blocked')
+        self.assertEqual(len(client.calls), count)
+        # An explicit policy reset acknowledges review; an unrelated save does not.
+        self.app.runtime.save({'policy_mode': 'observe'}, 1, 'fixture')
+        client.fail = False
+        result = self.controller.poll(client, client.rows, self.app.runtime.values() | {'managed_categories': ['linux']})
+        self.assertEqual(result['effective_status'], 'restoring')
+        self.assertEqual(client.prefs['max_active_downloads'], 5)
+
+    def test_changed_settings_abort_before_any_upstream_mutation(self):
+        client = Client([row(1, priority=9)])
+        self.app.runtime.save({'timezone': 'Europe/London'}, 0, 'fixture')
+        with self.assertRaises(RuntimeError):
+            self.controller.poll(client, client.rows, self.config | {'policy_mode': 'enforce'})
+        self.assertEqual(client.calls, [])
+        self.assertEqual(self.app.store.history()['actions'], [])

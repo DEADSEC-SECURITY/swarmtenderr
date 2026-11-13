@@ -33,19 +33,22 @@ class Runtime:
             raise ValueError("Unknown locked setting")
 
     def values(self, snapshot=None):
-        revision, saved = self.store.config() if snapshot is None else snapshot
+        revision, saved, policy_revision, ack_revision = self.store.config(include_policy=True) if snapshot is None else snapshot
         values = {**self.defaults, **{key: value for key, value in saved.items() if key not in SECRET_KEYS and key not in self.settings.locked_settings}}
         values["qbit_password"] = self.vault.decrypt(saved["qbit_password"]) if "qbit_password" in saved and "qbit_password" not in self.settings.locked_settings else read_secret(self.settings.qbit_password_file)
         values["sso_client_secret"] = self.vault.decrypt(saved["sso_client_secret"]) if "sso_client_secret" in saved and "sso_client_secret" not in self.settings.locked_settings else read_secret(self.settings.oidc_secret_file)
         values["revision"] = revision
+        values["policy_revision"] = policy_revision
+        values["policy_ack_revision"] = ack_revision
         if self.settings.demo or self.settings.optimizer_state:
             values["controls_enabled"] = False
             values["policy_mode"] = "observe"
         return values
 
     def public(self):
-        revision, saved = self.store.config()
-        values = self.values((revision, saved))
+        snapshot = self.store.config(include_policy=True)
+        revision, saved = snapshot[:2]
+        values = self.values(snapshot)
         locked = set(self.settings.locked_settings)
         if self.settings.demo:
             locked |= {"qbit_url", "qbit_username", "qbit_password", "sso_enabled",
@@ -53,7 +56,7 @@ class Runtime:
         if self.settings.optimizer_state:
             locked |= {"controls_enabled", "policy_mode"}
         return {"revision": revision,
-                "values": {key: value for key, value in values.items() if key not in SECRET_KEYS | {"revision"}},
+                "values": {key: values[key] for key in self.defaults},
                 "secrets": {key: bool(values[key]) for key in SECRET_KEYS},
                 "sources": {key: "ui" if key in saved and key not in locked else "deployment" for key in self.defaults | dict.fromkeys(SECRET_KEYS)},
                 "locked": sorted(locked),

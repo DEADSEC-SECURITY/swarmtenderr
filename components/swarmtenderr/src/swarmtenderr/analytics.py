@@ -19,11 +19,7 @@ class Analytics:
         zone = ZoneInfo(timezone)
         today = datetime.fromtimestamp(current, zone).replace(hour=0, minute=0, second=0, microsecond=0)
         month = today.replace(day=1)
-        with self.store.connection() as c:
-            if self.store.postgres:
-                c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            else:
-                c.execute("BEGIN")
+        with self.store.connection(consistent=True) as c:
             since = self.store.meta("collection_started", None, c)
 
             def period(start, end):

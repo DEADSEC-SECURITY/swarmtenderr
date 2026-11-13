@@ -21,6 +21,9 @@ const state = {
   socket: null,
   reconnect: 1000,
   loggingOut: false,
+  sessionEpoch: 0,
+  requestController: new AbortController(),
+  retryTimer: null,
 };
 const names = {
   overview: "Overview",
@@ -99,12 +102,27 @@ function message(target, text, error = false) {
   target.classList.toggle("error", error);
 }
 function toast(text) {
+  if (!text || state.loggingOut) return;
   $("toast").textContent = text;
   $("toast").hidden = false;
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => ($("toast").hidden = true), 6000);
 }
+function cancelledRequest() {
+  const error = new Error("");
+  error.name = "AbortError";
+  return error;
+}
+function advanceSession() {
+  state.sessionEpoch++;
+  state.requestController.abort();
+  state.requestController = new AbortController();
+  clearTimeout(state.retryTimer);
+  state.socket?.close();
+  state.socket = null;
+}
 async function api(path, options = {}) {
+  const epoch = state.sessionEpoch;
   const headers = { ...options.headers };
   if (options.body && typeof options.body !== "string") {
     headers["Content-Type"] = "application/json";
@@ -112,18 +130,24 @@ async function api(path, options = {}) {
   }
   if (options.method && options.method !== "GET")
     headers["X-CSRF-Token"] = state.csrf;
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    cache: "no-store",
-    ...options,
-    headers,
-  });
-  let value;
+  let response, value;
   try {
+    response = await fetch(path, {
+      credentials: "same-origin",
+      cache: "no-store",
+      ...options,
+      headers,
+      signal: state.requestController.signal,
+    });
     value = await response.json();
-  } catch {
-    throw new Error("The server returned an unreadable response.");
+  } catch (error) {
+    if (epoch !== state.sessionEpoch || error.name === "AbortError")
+      throw cancelledRequest();
+    throw new Error(
+      "The connection failed or returned an unreadable response.",
+    );
   }
+  if (epoch !== state.sessionEpoch) throw cancelledRequest();
   if (!response.ok) {
     const error = new Error(
       value.error || `Request failed (${response.status})`,
@@ -159,12 +183,54 @@ $("theme-toggle").addEventListener("click", () => {
 });
 function showLogin(reason = "") {
   state.loggingOut = true;
-  state.socket?.close();
+  advanceSession();
   state.user = null;
   state.csrf = "";
   state.status = null;
   state.statistics = null;
   state.settings = null;
+  state.activity = { actions: [], samples: [], audit: [] };
+  state.users = [];
+  state.selectedTorrent = state.editingUser = state.passwordUser = null;
+  state.historyQuery = "";
+  state.historyPage = state.torrentPage = 1;
+  state.settingsTab = "general";
+  document
+    .querySelectorAll(
+      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #detail-values, #detail-actions, #account-values",
+    )
+    .forEach((element) => element.replaceChildren());
+  document
+    .querySelectorAll(
+      'input[type="password"], .view input:not([type="checkbox"])',
+    )
+    .forEach((input) => (input.value = ""));
+  $("history-uncategorized").checked = false;
+  $("history-category").disabled = false;
+  $("torrent-category").replaceChildren(new Option("All categories", ""));
+  $("torrent-filter").value = "all";
+  [
+    "completed-today",
+    "completed-month",
+    "payload-month",
+    "download-speed",
+  ].forEach((id) => ($(id).textContent = "—"));
+  [
+    "today-note",
+    "month-note",
+    "coverage-note",
+    "history-coverage",
+    "detail-name",
+    "detail-policy",
+    "action-result",
+    "torrent-summary",
+    "history-page-label",
+    "torrent-page-label",
+  ].forEach((id) => ($(id).textContent = ""));
+  $("account-name").textContent = "Account";
+  $("account-role").textContent = "";
+  $("account-avatar").textContent = "A";
+  $("toast").hidden = true;
   document.querySelectorAll("dialog[open]").forEach((d) => d.close());
   $("application").hidden = true;
   $("login-screen").hidden = false;
@@ -180,6 +246,7 @@ async function authOptions() {
   return result;
 }
 async function enter(session) {
+  advanceSession();
   state.user = session.user;
   state.csrf = session.csrf;
   state.loggingOut = false;
@@ -233,6 +300,7 @@ async function refresh() {
     state.activity = activity;
     render();
   } catch (error) {
+    if (error.name === "AbortError") return;
     if (state.user) {
       $("notice").hidden = false;
       $("notice").textContent = error.message;
@@ -243,6 +311,8 @@ async function refresh() {
 }
 function connectLive() {
   if (!state.user || state.loggingOut) return;
+  const epoch = state.sessionEpoch;
+  state.socket?.close();
   const socket = new WebSocket(
     `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/v1/live`,
   );
@@ -251,6 +321,8 @@ function connectLive() {
     state.reconnect = 1000;
   });
   socket.addEventListener("message", (event) => {
+    if (state.socket !== socket || epoch !== state.sessionEpoch || !state.user)
+      return;
     let value;
     try {
       value = JSON.parse(event.data);
@@ -284,13 +356,21 @@ function connectLive() {
     }
   });
   socket.addEventListener("close", (event) => {
-    if (state.socket !== socket || state.loggingOut) return;
+    if (
+      state.socket !== socket ||
+      state.loggingOut ||
+      epoch !== state.sessionEpoch
+    )
+      return;
     if (event.code === 4401) {
       showLogin("Your session expired or access changed. Sign in again.");
       return;
     }
     $("connection").textContent = "Live updates disconnected. Reconnecting…";
-    setTimeout(connectLive, state.reconnect);
+    clearTimeout(state.retryTimer);
+    state.retryTimer = setTimeout(() => {
+      if (epoch === state.sessionEpoch) connectLive();
+    }, state.reconnect);
     state.reconnect = Math.min(30000, state.reconnect * 2);
   });
   socket.addEventListener("error", () => socket.close());
@@ -407,8 +487,12 @@ function render() {
   renderOptimizer(snapshot?.optimizer);
   if ($("details-dialog").open) renderDetails();
   if (focusedKey) {
-    const target = [...document.querySelectorAll("[data-focus-key]")].find(element => element.dataset.focusKey === focusedKey && element.getClientRects().length);
-    target?.focus({preventScroll:true});
+    const target = [...document.querySelectorAll("[data-focus-key]")].find(
+      (element) =>
+        element.dataset.focusKey === focusedKey &&
+        element.getClientRects().length,
+    );
+    target?.focus({ preventScroll: true });
   }
 }
 function updateFreshness() {
@@ -789,11 +873,20 @@ function renderOptimizer(engine) {
     ? "Stale"
     : !engine.connected
       ? "Unavailable"
-      : engine.mode === "enforce"
-        ? "Enforce"
-        : "Observe";
+      : {
+          enforcing: "Enforcing",
+          pending: "Pending",
+          blocked: "Blocked",
+          restoring: "Restoring",
+          standby: "Standby",
+        }[engine.effective_status] || "Observe";
   $("optimizer-state").className =
-    "badge " + (engine.stale || !engine.connected ? "warning" : "good");
+    "badge " +
+    (engine.stale ||
+    !engine.connected ||
+    ["blocked", "pending", "restoring"].includes(engine.effective_status)
+      ? "warning"
+      : "good");
   $("optimizer-explanation").textContent = engine.reason || "";
   $("optimizer-explanation").hidden = !engine.reason;
   $("optimizer-capacity").hidden = !engine.connected;
@@ -803,7 +896,7 @@ function renderOptimizer(engine) {
   for (const [label, value] of [
     [
       "Download slots",
-      `${capacity.applied_slots ?? "—"} allowed / ${capacity.requested_slots ?? "—"} requested`,
+      `${capacity.native_slots ?? "—"} native · ${capacity.applied_slots ?? "—"} recommended / ${capacity.requested_slots ?? "—"} requested`,
     ],
     [
       "Download reservation",
@@ -863,13 +956,27 @@ function renderDetails() {
   $("detail-policy").textContent = policy
     ? `${row.decision}: ${row.reason}`
     : "";
-  const recentActions = state.activity.actions.filter(action => action.torrent === row.hash).slice(0,5);
+  const recentActions = state.activity.actions
+    .filter((action) => action.torrent === row.hash)
+    .slice(0, 5);
   const actions = $("detail-actions");
   actions.replaceChildren();
-  if (!recentActions.length) actions.append(node("p","No actions in recent activity.","muted"));
-  for (const action of recentActions){
-    const item = node("div",null,"detail-action");
-    item.append(node("time",date(action.at)),node("span",action.action),badge(action.outcome,action.outcome === "confirmed" ? "good" : action.outcome === "uncertain" ? "warning" : ""));
+  if (!recentActions.length)
+    actions.append(node("p", "No actions in recent activity.", "muted"));
+  for (const action of recentActions) {
+    const item = node("div", null, "detail-action");
+    item.append(
+      node("time", date(action.at)),
+      node("span", action.action),
+      badge(
+        action.outcome,
+        action.outcome === "confirmed"
+          ? "good"
+          : action.outcome === "uncertain"
+            ? "warning"
+            : "",
+      ),
+    );
     actions.append(item);
   }
   let reason = "";
@@ -1124,9 +1231,9 @@ const settingSections = {
       ],
       [
         "download_slots",
-        "Requested download slots",
+        "Requested download slots (client-wide)",
         "number",
-        "The optimizer may allow fewer slots when a complete batch does not fit.",
+        "Sets the client-wide native ceiling. External work is reserved first; fewer slots may be recommended when a complete batch does not fit.",
         1,
         100,
       ],
@@ -1673,3 +1780,13 @@ window.addEventListener("resize", () => {
 $("history-uncategorized").addEventListener("change", () => {
   $("history-category").disabled = $("history-uncategorized").checked;
 });
+
+document
+  .querySelectorAll("dialog")
+  .forEach((dialog) =>
+    dialog.addEventListener("close", () =>
+      dialog
+        .querySelectorAll('input[type="password"]')
+        .forEach((input) => (input.value = "")),
+    ),
+  );
