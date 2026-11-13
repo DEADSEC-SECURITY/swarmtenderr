@@ -28,7 +28,9 @@ prove a live server works.
 
 After acceptance, run **Promote accepted Swarmtenderr digest** with the exact digest
 and package version. It promotes the existing manifest, checks the stable tag has
-the same digest and performs no Docker build. Update Apollo's image input through
+the same digest and performs no Docker build. The stable version and `latest` both
+reference the accepted manifest. An existing version cannot be overwritten by a
+different digest; upgrade by releasing a new version. Update Apollo's image input through
 its existing deployment owner; review a scoped plan and reject unrelated changes.
 
 Back up before migration, retain the previous image/database/key recovery set,

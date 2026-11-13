@@ -236,6 +236,15 @@ function showLogin(reason = "") {
   $("login-screen").hidden = false;
   $("login-password").value = "";
   message($("login-error"), reason, !!reason);
+  // Authentication methods can change while an administrator is signed in.
+  authOptions().catch((error) => {
+    if (error.name !== "AbortError" && !state.user && !reason)
+      message(
+        $("login-error"),
+        "Unable to load sign-in methods. Refresh and try again.",
+        true,
+      );
+  });
 }
 async function authOptions() {
   const result = await api("/api/v1/auth/options");
@@ -1724,11 +1733,20 @@ $("change-password").addEventListener("click", () => {
   passwordDialog();
 });
 $("logout").addEventListener("click", async () => {
+  if (state.loggingOut) return;
+  state.loggingOut = true;
+  $("logout").disabled = true;
   try {
     await api("/api/v1/auth/logout", { method: "POST", body: {} });
     showLogin();
   } catch (error) {
-    toast(error.message);
+    if (state.user) {
+      state.loggingOut = false;
+      toast(error.message || "Unable to sign out. Try again.");
+      if (!state.socket || state.socket.readyState > 1) connectLive();
+    }
+  } finally {
+    $("logout").disabled = false;
   }
 });
 document.querySelectorAll("[data-close]").forEach((button) =>

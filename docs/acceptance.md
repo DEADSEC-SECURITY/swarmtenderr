@@ -7,7 +7,7 @@ unpublished image or an untested server deployment.
 
 | View/control | Contract | Access | Automated evidence |
 | --- | --- | --- | --- |
-| Sign in/out, account | `/api/v1/auth/login`, `/auth/logout`, `/me`, `/account/password` | Local account; own account | `test_product.py`, real HTTP/socket acceptance |
+| Sign in/out, account | `/api/v1/auth/login`, `/auth/logout`, `/me`, `/account/password` | Local account; own account; refreshed SSO choices on sign-out | `test_product.py`, real HTTP/socket acceptance |
 | SSO sign in | `/auth/oidc/login`, `/auth/oidc/callback` | Allowed issuer/subject/group | `test_oidc.py`: real signed issuer, PKCE, nonce/state, replay and rejection cases |
 | Overview and daily/monthly chart | `/api/v1/status`, `/statistics`, `/live` | Viewer+ | Exact timezone/DST/category totals, large history and pushed observations |
 | Torrent search/filter/sort/pages | Current bounded snapshot; local filtered pages | Viewer+ | Backend projection/large queue; browser review required |

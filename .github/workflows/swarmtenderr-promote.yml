@@ -43,9 +43,18 @@ jobs:
           ACCEPTED_DIGEST: ${{ inputs.digest }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          if existing=$(docker buildx imagetools inspect "elgon2003/swarmtenderr:$RELEASE_VERSION" --format '{{json .Manifest}}' 2>/tmp/swarmtenderr-version-check); then
+            python -c 'import json,os,sys; assert json.loads(sys.argv[1])["digest"] == os.environ["ACCEPTED_DIGEST"], "A different artifact already owns this release version"' "$existing"
+          elif ! rg -q 'not found|manifest unknown' /tmp/swarmtenderr-version-check; then
+            echo 'Could not verify release-version availability; promotion stopped.' >&2
+            exit 1
+          fi
           docker buildx imagetools create --prefer-index=false \
             --tag "elgon2003/swarmtenderr:$RELEASE_VERSION" \
+            --tag "elgon2003/swarmtenderr:latest" \
             "elgon2003/swarmtenderr@$ACCEPTED_DIGEST"
-          result=$(docker buildx imagetools inspect "elgon2003/swarmtenderr:$RELEASE_VERSION" --format '{{json .Manifest}}')
-          python -c 'import json,os,sys; assert json.loads(sys.argv[1])["digest"] == os.environ["ACCEPTED_DIGEST"]' "$result"
+          for tag in "$RELEASE_VERSION" latest; do
+            result=$(docker buildx imagetools inspect "elgon2003/swarmtenderr:$tag" --format '{{json .Manifest}}')
+            python -c 'import json,os,sys; assert json.loads(sys.argv[1])["digest"] == os.environ["ACCEPTED_DIGEST"]' "$result"
+          done
           printf 'Promoted `elgon2003/swarmtenderr@%s` as `%s` without rebuilding.\n' "$ACCEPTED_DIGEST" "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
