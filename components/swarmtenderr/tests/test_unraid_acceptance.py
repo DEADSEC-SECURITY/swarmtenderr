@@ -14,16 +14,14 @@ import uuid
 import xml.etree.ElementTree as ET
 
 
-ROOT = Path(__file__).resolve().parents[3]
-
-
 def docker(*args, input=None):
     return subprocess.check_output(['docker', *args], input=input, text=True).strip()
 
 
 def main():
-    template = ET.parse(ROOT/'templates/swarmtenderr.xml').getroot()
-    profile = ET.parse(ROOT/'ca_profile.xml').getroot()
+    root = Path(__file__).resolve().parents[3]
+    template = ET.parse(root/'templates/swarmtenderr.xml').getroot()
+    profile = ET.parse(root/'ca_profile.xml').getroot()
     assert profile.findtext('Profile', '').strip()
     assert template.attrib == {'version': '2'}
     assert template.findtext('Privileged') == 'false'
