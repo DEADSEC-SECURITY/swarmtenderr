@@ -1965,7 +1965,9 @@
                       "prioritize",
                       "reannounce",
                       "force_start",
-                      "unforce"
+                      "unforce",
+                      "fetch_metadata",
+                      "cancel_metadata"
                     ]
                   }
                 },
@@ -2004,7 +2006,7 @@
             }
           }
         ],
-        "description": "Operators and administrators may issue explicit single-torrent actions, including force start and return to queue. Automatic optimizer exclusions and deployment switches do not block manual intent. Demo mode cannot mutate a real client."
+        "description": "Operators and administrators may issue explicit single-torrent actions, including force start and return to queue. Automatic optimizer exclusions and deployment switches do not block manual intent. Demo mode cannot mutate a real client. Fetch metadata starts a durable temporary force-start attempt, reannounces once, and releases queue control after metadata is observed or the deadline expires. Previously stopped torrents are stopped again. Unknown results are observed without automatically replaying mutations. Cancellation is explicit. File payload can begin before the next observation. Reachable peers are required."
       }
     },
     "/auth/oidc/login": {
@@ -2528,6 +2530,11 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 100000
+          },
+          "metadata_fetch_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 1800
           }
         },
         "additionalProperties": false
@@ -2730,6 +2737,11 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100000
+              },
+              "metadata_fetch_seconds": {
+                "type": "integer",
+                "minimum": 60,
+                "maximum": 1800
               }
             },
             "required": [
@@ -2770,7 +2782,8 @@
               "minimum_rate_sample_seconds",
               "trial_improvement_percent",
               "unknown_size_gib",
-              "other_buffer_gib"
+              "other_buffer_gib",
+              "metadata_fetch_seconds"
             ],
             "additionalProperties": false
           },
@@ -3235,6 +3248,51 @@
                           "$ref": "#/components/schemas/TorrentRanking"
                         }
                       ]
+                    },
+                    "metadata_known": {
+                      "type": "boolean"
+                    },
+                    "metadata_request": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "active": {
+                              "type": "boolean"
+                            },
+                            "phase": {
+                              "type": "string"
+                            },
+                            "started_at": {
+                              "type": "number"
+                            },
+                            "deadline": {
+                              "type": "number"
+                            },
+                            "finished_at": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "active",
+                            "phase",
+                            "started_at",
+                            "deadline",
+                            "finished_at",
+                            "message"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
                     }
                   },
                   "additionalProperties": true
@@ -3274,6 +3332,11 @@
           },
           "activity_revision": {
             "type": "integer"
+          },
+          "metadata_fetch_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 1800
           }
         },
         "required": [
@@ -3288,7 +3351,8 @@
           "timezone",
           "poll_seconds",
           "completion_revision",
-          "activity_revision"
+          "activity_revision",
+          "metadata_fetch_seconds"
         ],
         "additionalProperties": false
       },

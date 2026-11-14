@@ -7,7 +7,7 @@ from swarmtenderr_policy.tuning import POLICY_DEFAULTS, RULES, Policy, fields
 
 
 SECRET_KEYS = {"qbit_password", "sso_client_secret"}
-NUMBERS = {"poll_seconds": (1, 3600), "retention_days": (1, 365),
+NUMBERS = {"poll_seconds": (1, 3600), "retention_days": (1, 365), "metadata_fetch_seconds": (60, 1800),
            "download_slots": (1, 100), "minimum_free_gib": (1, 100000),
            "work_budget_gib": (1, 100000), "library_reserve_gib": (1, 100000)}
 NUMBERS.update({key: RULES[key][:2] for key in POLICY_DEFAULTS})
@@ -23,6 +23,7 @@ class Runtime:
         self.defaults = {
             "qbit_url": settings.qbit_url, "qbit_username": settings.qbit_user,
             "poll_seconds": settings.poll_seconds, "retention_days": 30,
+            "metadata_fetch_seconds": 180,
             "timezone": settings.timezone, "controls_enabled": True,
             "policy_mode": "observe", "download_slots": 3,
             "managed_categories": [], "excluded_tags": ["swarmtenderr-keep"],
@@ -130,6 +131,12 @@ class Runtime:
         for key in reset:
             candidate[key] = (read_secret(self.settings.qbit_password_file) if key == "qbit_password" else
                               read_secret(self.settings.oidc_secret_file) if key == "sso_client_secret" else self.defaults[key])
+        if any(candidate[key] != current[key] for key in ('qbit_url', 'qbit_username')):
+            from .metadata import connection_binding
+            target = connection_binding(candidate['qbit_url'], candidate['qbit_username'])
+            if any(request.get('active') and request['client'] != target
+                   for request in self.store.metadata_requests().values()):
+                raise ValueError("Finish or cancel active metadata attempts before switching clients. Reconnecting to their original client is allowed.")
         Policy.from_values(candidate)
         if candidate["sso_enabled"] and not all(candidate[key] for key in ("sso_issuer", "sso_client_id", "sso_client_secret")):
             raise ValueError("SSO requires an issuer, client ID and client secret")

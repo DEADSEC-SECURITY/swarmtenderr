@@ -69,15 +69,20 @@ class Qbit:
             raise UpstreamError("Invalid qBittorrent torrent list")
         return rows
 
+    def torrent(self, identity):
+        if not isinstance(identity, str) or not HASH.fullmatch(identity):
+            raise ValueError("Invalid torrent")
+        rows = self.request("torrents/info?" + urllib.parse.urlencode({"hashes": identity}))
+        if not isinstance(rows, list) or len(rows) != 1 or rows[0].get("hash", "").lower() != identity.lower():
+            raise ValueError("Torrent no longer exists")
+        return rows[0]
+
     def action(self, identity, action, *, eligible=None, manual=False):
         if (not HASH.fullmatch(identity) or action not in ACTIONS
                 or (action in {"force_start", "unforce"} and not manual)):
             raise ValueError("Invalid torrent or unsupported action")
         # Refresh directly before every mutation; never trust a browser's cached row.
-        rows = self.request("torrents/info?" + urllib.parse.urlencode({"hashes": identity}))
-        if not isinstance(rows, list) or len(rows) != 1 or rows[0].get("hash", "").lower() != identity.lower():
-            raise ValueError("Torrent no longer exists")
-        row = rows[0]
+        row = self.torrent(identity)
         if not manual and (row.get("progress", 1) >= 1 or row.get("force_start", False)
                 or row.get("state") in {"forcedDL", "forcedUP"}
                 or has_protected_tag(row, self.protected_tags)):

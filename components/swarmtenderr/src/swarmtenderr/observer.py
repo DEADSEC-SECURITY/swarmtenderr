@@ -101,6 +101,8 @@ class Observer:
         self.wake = threading.Event()
         from .controller import Controller
         self.controller = Controller(settings, store)
+        from .metadata import MetadataRequests
+        self.metadata = MetadataRequests(store, self.controller.owner)
         self.last_error = ""
         self.demo_policy = {}
         self.stop = threading.Event()
@@ -125,6 +127,8 @@ class Observer:
         with self.lock:
             config = self.runtime.values() if self.runtime else {"controls_enabled": self.settings.controls, "retention_days": 30}
             rows = demo_rows() if self.settings.demo else self.get_client().torrents()
+            if not self.settings.demo and self.metadata.poll(self.get_client(), rows):
+                rows = self.get_client().torrents()
             if self.settings.optimizer_state:
                 engine = optimizer(self.settings.optimizer_state)
             elif self.settings.demo:
@@ -145,6 +149,13 @@ class Observer:
                 except Exception:
                     engine = {"connected": False, "reason": "Policy evaluation failed; check native queue settings, capacity and pending requests in Activity", "rows": [], "events": []}
             torrents = projection(rows, engine, protected_tags=config.get('excluded_tags', ()))
+            requests = {} if self.settings.demo else self.metadata.public(self.get_client())
+            for row in torrents:
+                row['metadata_request'] = requests.get(row['hash'])
+            from .metadata import has_metadata
+            raw_by_hash = {row['hash']: row for row in rows}
+            for row in torrents:
+                row['metadata_known'] = has_metadata(raw_by_hash[row['hash']])
             public_engine = {key: value for key, value in engine.items() if key != 'rankings'}
             public_engine['ranking_count'] = len(engine.get('rankings', []))
             data = {"observed_at": time.time(), "demo": self.settings.demo,
@@ -172,6 +183,8 @@ class Observer:
                         logging.getLogger("swarmtenderr").warning("Observer poll failed")
                 try:
                     interval = self.runtime.values()["poll_seconds"] if self.runtime else self.settings.poll_seconds
+                    if not self.settings.demo and self.metadata.active():
+                        interval = min(interval, 1)
                 except Exception:
                     interval = 5
                 self.wake.wait(interval)

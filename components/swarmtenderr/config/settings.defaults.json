@@ -1,6 +1,7 @@
 {
   "timezone": "UTC",
   "poll_seconds": 3,
+  "metadata_fetch_seconds": 180,
   "retention_days": 30,
   "policy_mode": "observe",
   "managed_categories": [],

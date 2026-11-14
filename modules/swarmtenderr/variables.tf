@@ -119,6 +119,7 @@ variable "defaults" {
   type = object({
     timezone                    = optional(string, "UTC")
     poll_seconds                = optional(number, 3)
+    metadata_fetch_seconds      = optional(number, 180)
     retention_days              = optional(number, 30)
     policy_mode                 = optional(string, "observe")
     managed_categories          = optional(list(string), [])
@@ -160,6 +161,7 @@ variable "defaults" {
       var.defaults.policy_mode != "enforce" || length(var.defaults.managed_categories) > 0,
       contains(["viewer", "operator"], var.defaults.sso_default_role),
       var.defaults.poll_seconds >= 1 && var.defaults.poll_seconds <= 3600 && floor(var.defaults.poll_seconds) == var.defaults.poll_seconds,
+      var.defaults.metadata_fetch_seconds >= 60 && var.defaults.metadata_fetch_seconds <= 1800 && floor(var.defaults.metadata_fetch_seconds) == var.defaults.metadata_fetch_seconds,
       var.defaults.retention_days >= 1 && var.defaults.retention_days <= 365 && floor(var.defaults.retention_days) == var.defaults.retention_days,
       var.defaults.download_slots >= 1 && var.defaults.download_slots <= 100 && floor(var.defaults.download_slots) == var.defaults.download_slots,
       alltrue([for value in [var.defaults.minimum_free_gib, var.defaults.work_budget_gib, var.defaults.library_reserve_gib] : value >= 1 && value <= 100000 && floor(value) == value]),
@@ -201,7 +203,7 @@ variable "locked_settings" {
   description = "Deprecated compatibility input. Administrators can override defaults in the UI."
   validation {
     condition = alltrue([for key in var.locked_settings : contains([
-      "timezone", "poll_seconds", "retention_days", "qbit_url", "qbit_username", "qbit_password", "controls_enabled",
+      "timezone", "poll_seconds", "metadata_fetch_seconds", "retention_days", "qbit_url", "qbit_username", "qbit_password", "controls_enabled",
       "policy_mode", "managed_categories", "excluded_tags", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib",
       "ranking_interval_seconds", "probe_seconds", "retry_seconds", "rate_fresh_seconds", "seed_trial_seconds", "seed_trial_retry_seconds", "min_trial_seeds", "min_proven_speed_kib", "swarm_trial_seconds", "swarm_warmup_seconds", "swarm_min_sample_seconds", "swarm_retry_seconds", "swarm_slow_speed_kib", "metadata_trial_seconds", "metadata_retry_seconds", "minimum_rate_sample_seconds", "trial_improvement_percent", "unknown_size_gib", "other_buffer_gib",
       "sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_label", "sso_allowed_groups", "sso_default_role"

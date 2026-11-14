@@ -35,7 +35,7 @@ def bencode(value):
 def fixture(index):
     payload = (f'Swarmtenderr generated acceptance fixture {index}\n'.encode() * 50000)[:2*1024*1024]
     info = {'name': f'fixture-{index}.bin', 'length': len(payload), 'piece length': 16384,
-            'pieces': b''.join(hashlib.sha1(payload[i:i+16384]).digest() for i in range(0, len(payload), 16384)), 'private': 1}
+            'pieces': b''.join(hashlib.sha1(payload[i:i+16384]).digest() for i in range(0, len(payload), 16384)), 'private': 0 if index == 5 else 1}
     return payload, bencode({'announce': 'http://127.0.0.1:1/announce', 'info': info}), hashlib.sha1(bencode(info)).hexdigest()
 
 
@@ -74,13 +74,13 @@ def worker():
     print('Real-client authentication and preference setup passed', flush=True)
     seed, native = clients
 
-    def add(client, index, **fields):
+    def add(client, index, *, magnet=False, **fields):
         _, torrent, identity = fixture(index)
         cookies = {cookie.name: cookie.value for cookie in client.cookies}
         with httpx.Client(trust_env=False, timeout=10, cookies=cookies) as http:
             response = http.post(client.url + '/api/v2/torrents/add',
-                files={'torrents': ('fixture.torrent', torrent, 'application/x-bittorrent')},
-                data={'savepath': '/downloads', 'category': 'acceptance', **fields},
+                files=None if magnet else {'torrents': ('fixture.torrent', torrent, 'application/x-bittorrent')},
+                data={'savepath': '/downloads', 'category': 'acceptance', **({'urls':'magnet:?xt=urn:btih:' + identity} if magnet else {}), **fields},
                 headers={'Origin': client.url, 'Referer': client.url + '/'})
             assert response.status_code == 200, response.status_code
         eventually(lambda: any(row['hash'] == identity for row in client.torrents()), 'native torrent add')
@@ -129,6 +129,65 @@ def worker():
         for action in ('pause','resume'):
             assert external.action(identity, {'action':action}, user)[0] == 202
         print('Native manual controls, force/unforce, protected manual intent and external-owner controls passed', flush=True)
+        # Metadata comes from a real peer on this isolated network, never from
+        # production trackers. Slow payload transfer makes restoration observable.
+        seed_metadata = add(seed, 5)
+        eventually(lambda: next(r for r in seed.torrents() if r['hash']==seed_metadata)['progress']==1, 'metadata seed hash check')
+        pending_metadata = add(native, 5, magnet=True, stopped='true', dlLimit='8192')
+        no_peer = add(native, 6, magnet=True, stopped='true')
+        cancelled = add(native, 7, magnet=True, stopped='true')
+        app.store.controller_lease(app.observer.controller.owner, release=True)
+        assert external.action(pending_metadata, {'action':'fetch_metadata'}, user)[0] == 202
+        eventually(lambda: next(r for r in native.torrents() if r['hash']==pending_metadata)['force_start'], 'metadata force start bypass')
+        native.request('torrents/addPeers', {'hashes': pending_metadata, 'peers': socket.gethostbyname('seed') + ':' + str(seed.preferences()['listen_port'])})
+        metadata_phases = set()
+        def metadata_acquired():
+            external.observer.poll()
+            request = external.store.metadata_requests()[pending_metadata]
+            if request['phase'] not in metadata_phases:
+                metadata_phases.add(request['phase'])
+                observed = next(r for r in external.store.read()['torrents'] if r['hash']==pending_metadata)
+                print('Metadata fixture phase:', request['phase'], {k:observed.get(k) for k in ('state','size','metadata_known','force_start')}, flush=True)
+            return request['phase']=='acquired'
+        try:
+            eventually(metadata_acquired, 'real peer metadata and previous stopped-state restoration', seconds=60)
+        except AssertionError:
+            print('Metadata fixture diagnostics:', {k:next(r for r in native.torrents() if r['hash']==pending_metadata).get(k)
+                  for k in ('state','size','total_size','amount_left','progress','force_start','num_seeds','num_leechs')},
+                  external.store.metadata_requests()[pending_metadata], flush=True)
+            raise
+        observed = next(r for r in native.torrents() if r['hash']==pending_metadata)
+        assert observed['size'] > 0 and observed['state']=='stoppedDL' and not observed['force_start']
+        assert external.action(cancelled, {'action':'fetch_metadata'}, user)[0] == 202
+        assert external.action(cancelled, {'action':'cancel_metadata'}, user)[0] == 202
+        def cancelled_metadata():
+            external.observer.poll()
+            return external.store.metadata_requests()[cancelled]['phase']=='cancelled'
+        eventually(cancelled_metadata, 'metadata cancellation restores stopped intent')
+        for manual_action in ('pause', 'resume'):
+            assert external.action(cancelled, {'action':'fetch_metadata'}, user)[0] == 202
+            assert external.action(cancelled, {'action':manual_action}, user)[0] == 202
+            def manual_takeover():
+                external.observer.poll()
+                row = next(r for r in native.torrents() if r['hash']==cancelled)
+                return (not external.store.metadata_requests()[cancelled]['active'] and not row['force_start']
+                        and (manual_action != 'pause' or row['state']=='stoppedDL'))
+            eventually(manual_takeover, 'manual '+manual_action+' clears the temporary force flag')
+        assert external.action(no_peer, {'action':'fetch_metadata'}, user)[0] == 202
+        record = external.store.metadata_requests()[no_peer]
+        record['deadline'] = time.time() - 1
+        external.store.save_metadata_request(record)
+        external.store.controller_lease(external.observer.controller.owner, release=True)
+        recovered = create_app(external.settings, False)
+        def recovered_timeout():
+            recovered.observer.poll()
+            return recovered.store.metadata_requests()[no_peer]['phase']=='timed_out'
+        eventually(recovered_timeout, 'durable expired attempt recovered after application restart')
+        observed = next(r for r in native.torrents() if r['hash']==no_peer)
+        assert not observed['force_start'] and observed['state']=='stoppedDL'
+        recovered.store.controller_lease(recovered.observer.controller.owner, release=True)
+        native.request('torrents/delete', {'hashes':'|'.join((pending_metadata,no_peer,cancelled)), 'deleteFiles':'false'})
+        print('Real magnet metadata: queue bypass, peer acquisition, cancellation, stopped-state restoration and durable timeout recovery passed', flush=True)
         before = native.preferences()
         config = app.runtime.public()
         app.runtime.save({'policy_mode': 'enforce'}, config['revision'], 'acceptance')
@@ -192,6 +251,7 @@ def main(image):
                 downloads.chmod(0o777)
                 if alias == 'seed':
                     (downloads/'fixture-1.bin').write_bytes(fixture(1)[0])
+                    (downloads/'fixture-5.bin').write_bytes(fixture(5)[0])
                 salt = b'acceptance-fixtur'
                 digest = hashlib.pbkdf2_hmac('sha512', PASSWORD.encode(), salt, 100000, 64)
                 encoded = base64.b64encode(salt).decode() + ':' + base64.b64encode(digest).decode()

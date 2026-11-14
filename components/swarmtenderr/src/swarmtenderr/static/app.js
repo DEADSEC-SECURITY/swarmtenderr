@@ -244,6 +244,11 @@ function showLogin(reason = "") {
     "history-page-label",
     "torrent-page-label",
   ].forEach((id) => ($(id).textContent = ""));
+  const metadataAction = $("metadata-action");
+  $("detail-metadata-request").replaceChildren(metadataAction);
+  $("detail-metadata-request").hidden = true;
+  metadataAction.hidden = true;
+  metadataAction.disabled = true;
   $("account-name").textContent = "Account";
   $("account-role").textContent = "";
   $("account-avatar").textContent = "A";
@@ -433,7 +438,7 @@ function classification(row) {
     return seedingStates.has(row.state)
       ? ["Seeding", "good", "seeding"]
       : ["Complete", "", "complete"];
-  if (row.state === "metaDL") return ["Metadata", "warning", "metadata"];
+  if (["metaDL", "forcedMetaDL"].includes(row.state)) return ["Metadata", "warning", "metadata"];
   if (row.state === "queuedDL") return ["Queued", "", "queued"];
   if (row.state === "stalledDL") return ["Stalled", "warning", "stalled"];
   if (["stoppedDL", "pausedDL"].includes(row.state))
@@ -1002,7 +1007,7 @@ function renderDetails() {
     complete = row.progress >= 1,
     unknown =
       !complete &&
-      (row.ranking ? row.ranking.metadata.known === false : row.state === "metaDL"),
+      (typeof row.metadata_known === "boolean" ? !row.metadata_known : row.ranking ? row.ranking.metadata.known === false : ["metaDL", "forcedMetaDL"].includes(row.state)),
     nameless = !row.name || row.name === row.hash;
   $("detail-name").textContent = nameless ? row.hash : row.name;
   $("detail-name").classList.toggle("mono", nameless);
@@ -1036,7 +1041,7 @@ function renderDetails() {
         node(
           "small",
           unknown
-            ? row.state === "metaDL"
+            ? ["metaDL", "forcedMetaDL"].includes(row.state)
               ? "Fetching now"
               : "Not acquired yet"
             : label,
@@ -1115,6 +1120,29 @@ function renderDetails() {
     ? `${row.decision}: ${row.reason}`
     : "";
   renderRanking(row);
+  const request = row.metadata_request,
+    metadataPanel = $("detail-metadata-request"),
+    metadataAction = $("metadata-action"),
+    duration = state.status?.metadata_fetch_seconds || 180;
+  metadataPanel.replaceChildren();
+  metadataPanel.hidden = !unknown && !request;
+  if (!metadataPanel.hidden) {
+    const titles = { starting: "Starting metadata attempt", fetching: "Fetching metadata",
+      restoring: "Returning to queue", attention: "Metadata request needs attention",
+      acquired: "Metadata acquired", timed_out: "Metadata attempt timed out",
+      cancelled: "Metadata attempt cancelled", interrupted: "Manual client control preserved",
+      removed: "Torrent removed", rejected: "Metadata request refused" };
+    metadataPanel.append(node("h3", request ? titles[request.phase] || "Metadata request" : "Request metadata now"));
+    metadataPanel.append(node("p", request?.message ||
+      "Temporarily bypass the queue and reannounce to find a peer with metadata. A reachable peer that shares metadata is still required."));
+    metadataPanel.append(node("p", request?.active
+      ? `Attempt ends ${date(request.deadline, true)}. Normal queue control returns when metadata is observed or the trial expires.`
+      : `A new attempt runs for up to ${SwarmDurations.format(duration)} (Settings → General). File data can begin when metadata arrives; normal queue control returns on the next observation.`, "muted"));
+  }
+  metadataAction.hidden = !unknown && !request?.active;
+  metadataAction.dataset.action = request?.active ? "cancel_metadata" : "fetch_metadata";
+  metadataAction.textContent = request?.active ? "Cancel metadata attempt" : "Fetch metadata now";
+  metadataPanel.append(metadataAction);
   const recentActions = state.activity.actions
     .filter((action) => action.torrent === row.hash)
     .slice(0, 5);
@@ -1141,7 +1169,7 @@ function renderDetails() {
   let reason = "";
   if (!current) reason = "This torrent is no longer in the client.";
   else if (state.user.role === "viewer")
-    reason = "Your viewer account cannot change torrents.";
+    reason = "Your viewer account cannot change torrents. Sign in as an operator or administrator to request metadata or use torrent controls.";
   else if (!state.status.snapshot.controls)
     reason = state.status.demo
       ? "Client operations are disabled for demo data."
@@ -1158,9 +1186,14 @@ function renderDetails() {
     .querySelectorAll("[data-action]")
     .forEach((b) => {
       const complete = b.dataset.action === "prioritize" && row.progress >= 1;
-      b.disabled = !!reason || complete;
+      const metadataBusy = b.dataset.action === "cancel_metadata" && request?.phase === "restoring";
+      const alreadyForced = b.dataset.action === "fetch_metadata" && row.force_start;
+      b.disabled = !!reason || complete || metadataBusy || alreadyForced;
       b.title = complete ? "Completed torrents do not have a download queue position" :
         b.dataset.action === "prioritize" ? "Changes native queue order. Use Force start to bypass automatic scheduling." : "";
+      if (alreadyForced) b.title = "Already force-started. Return to queue before starting a temporary metadata attempt.";
+      if (metadataBusy) b.title = "Waiting for the client to confirm restoration.";
+      if (b === metadataAction && reason) b.title = reason;
     });
 }
 const iconPaths = {
@@ -1485,13 +1518,17 @@ $("history-next").addEventListener("click", () => {
   state.historyPage++;
   loadHistory().catch((e) => toast(e.message));
 });
-const actionTitles = { prioritize: "Move to top", reannounce: "Reannounce", pause: "Pause", resume: "Resume", force_start: "Force start", unforce: "Return to queue" };
-const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", resume: "play", force_start: "play", unforce: "refresh" };
+const actionTitles = { prioritize: "Move to top", reannounce: "Reannounce", pause: "Pause", resume: "Resume", force_start: "Force start", unforce: "Return to queue", fetch_metadata: "Fetch metadata", cancel_metadata: "Cancel metadata attempt" };
+const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", resume: "play", force_start: "play", unforce: "refresh", fetch_metadata: "refresh", cancel_metadata: "pause" };
 const outcomeNotes = {
   accepted: "Accepted; waiting for the next client observation",
   confirmed: "Confirmed by a client observation",
   uncertain: "The result could not be confirmed; inspect the torrent before retrying",
   rejected: "The request was refused",
+  timed_out: "The metadata deadline expired and temporary force start was released",
+  cancelled: "The metadata attempt was cancelled",
+  interrupted: "The metadata attempt ended to preserve manual client control",
+  removed: "The torrent was removed from the client",
 };
 function renderActivity() {
   const target = $("activity-list"), pills = $("activity-outcomes"),
@@ -1626,6 +1663,14 @@ const settingSections = {
         "How often the server reads qBittorrent. WebSocket updates are pushed to open dashboards.",
         1,
         3600,
+      ],
+      [
+        "metadata_fetch_seconds",
+        "Manual metadata attempt duration",
+        "number",
+        "Maximum time for Fetch metadata now. The temporary force start ends when metadata is observed or this deadline expires. Existing attempts keep their deadline.",
+        60,
+        1800,
       ],
       [
         "retention_days",
