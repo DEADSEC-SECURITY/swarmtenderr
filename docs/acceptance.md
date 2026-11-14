@@ -13,6 +13,7 @@ unpublished image or an untested server deployment.
 | Torrent search/filter/sort/pages | Current bounded snapshot; local filtered pages | Viewer+ | Backend projection/large queue; browser review required |
 | Torrent details/activity | Snapshot, `/api/v1/activity` | Viewer+; administrative audit requires admin | Real action records and protection state |
 | Pause/resume/priority/reannounce/force/unforce | `/api/v1/torrents/{hash}/actions` | Operator+ | Real official qBittorrent fixtures, fresh eligibility and bounded single-hash mutations |
+| Fetch/cancel metadata attempt | `/api/v1/torrents/{hash}/actions` | Operator+ | Real magnet metadata, queue/stop restoration, cancellation, manual takeover and restart timeout recovery |
 | Completion filters/pages/CSV | `/api/v1/completions`, `/completions.csv` | Viewer+ | Persistent ledger, category/date filters, formula escaping and 10,000-record export boundary |
 | General/client/optimizer/SSO save | `PATCH /api/v1/settings` | Admin | Atomic revision checks, validation, editable defaults, encrypted write-only secrets and restart persistence on both databases |
 | Reset section | `/api/v1/settings/reset` | Admin | Explicit deployment defaults and revision conflict tests |
@@ -24,10 +25,12 @@ unpublished image or an untested server deployment.
 | Theme | Browser-local preference | Anyone signed in | Browser review at desktop/laptop/phone widths in both themes |
 
 `test_qbit_acceptance.py` starts two digest-pinned official clients on a Docker
-network with no Internet access. It generates private fixture torrents, submits
+network with no Internet access. It generates isolated fixture torrents, submits
 native controls, verifies protected transfers and upload settings, restores the
 original ceiling after enforcement, transfers generated data, and checks exactly
-one durable completion. Unique test containers/network are removed afterward.
+one durable completion. The metadata fixture is public because libtorrent disables
+metadata exchange for private torrents; its network still has no Internet access.
+Unique test containers/network are removed afterward.
 
 `test_container_acceptance.py` runs the full installed-image unit/integration suite
 on SQLite and a disposable PostgreSQL schema, then real HTTP, WebSocket and
