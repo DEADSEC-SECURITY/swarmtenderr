@@ -19,9 +19,7 @@
   <License>MIT</License>
   <ExtraSearchTerms>qbittorrent arr queue optimizer torrents authentik sqlite postgres</ExtraSearchTerms>
   <ExtraParams>--read-only --tmpfs /tmp:rw,nosuid,nodev,size=64m,mode=1777 --cap-drop=ALL --security-opt=no-new-privileges:true --pids-limit=128 --memory=256m --cpus=0.5</ExtraParams>
-  <Screenshot>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/docs/media/overview.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/docs/media/ranking.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/docs/media/settings.png</Screenshot>
   <Config Name="Web UI port" Target="8787" Default="8788" Mode="tcp" Description="Host port for the dashboard. Keep Public URL in sync if this changes." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/swarmtenderr" Mode="rw" Description="Persistent SQLite database and runtime encryption key. Owner must be UID/GID 10001. Back up this directory." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Private secret directory" Target="/run/secrets/swarmtenderr" Default="/mnt/user/appdata/swarmtenderr-secrets" Mode="ro" Description="Read-only directory containing admin-password and any optional PostgreSQL connection file. Follow the private-file preparation in ReadMe." Type="Path" Display="always" Required="true" Mask="false"/>
