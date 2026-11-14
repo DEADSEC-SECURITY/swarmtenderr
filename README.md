@@ -177,3 +177,7 @@ Verify frontend supply-chain integrity without network access using
 `python -B components/swarmtenderr/tools/vendor_echarts.py`; refresh only with
 its explicit `--download` option. CI verifies the asset hashes, chart helper
 behavior, frontend syntax and the API schema before building either architecture.
+
+Duration settings use separate hours, minutes and seconds fields with a readable
+total and allowed range. Existing values, deployment locks and reset behavior
+are preserved. The API and Terraform continue to use whole seconds.

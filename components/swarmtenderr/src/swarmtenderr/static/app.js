@@ -1325,6 +1325,9 @@ function settingsForm(key) {
   const external = key === "optimizer" && state.settings.deployment.external_optimizer;
   const config = external ? state.guardSettings : state.settings;
   const assign = (value) => { if (external) state.guardSettings = value; else state.settings = value; };
+  // Successful writes in another section advance this editor's known revision.
+  // Remote writes still conflict because snapshots never replace settings here.
+  const revision = () => (external ? state.guardSettings : state.settings).revision;
   const endpoint = external ? "/api/v1/optimizer/settings" : "/api/v1/settings";
   const extra = state.settings.optimizer_fields || [];
   const section = external ? { title: "Active torrent guard", description: "Changes apply on the next successful guard pass. Manual stops, force-starts, uploads and protected releases retain their existing protection.",
@@ -1350,7 +1353,9 @@ function settingsForm(key) {
     form.append(uri);
   }
   for (const field of section.fields) {
-    const [name, label, type, help, options, max] = field,
+    const [name, rawLabel, type, help, options, max] = field,
+      duration = type === "number" && name.endsWith("_seconds"),
+      label = duration ? rawLabel.replace(/ \(seconds\)$/, "") : rawLabel,
       wrapper = node("div", null, "settings-field"),
       description = node("div"),
       title = node("label", label, "field-title");
@@ -1368,8 +1373,12 @@ function settingsForm(key) {
         "field-source",
       ),
     );
-    let input;
-    if (type === "select") {
+    let input, editor;
+    if (duration) {
+      editor = SwarmDurations.editor(document, { name, label, value: config.values[name], minimum: options, maximum: max, locked });
+      input = editor.input;
+      title.htmlFor = editor.focusId;
+    } else if (type === "select") {
       input = node("select");
       for (const [value, text] of options) {
         const option = node("option", text);
@@ -1401,7 +1410,7 @@ function settingsForm(key) {
     else input.value = config.values[name] ?? "";
     input.dataset.type = type;
     input.dataset.original = JSON.stringify(inputValue(input, type));
-    wrapper.append(description, input);
+    wrapper.append(description, editor?.element || input);
     const group = field[6] || (key === "optimizer" && ["download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"].includes(name) ? "Capacity" : null);
     if (group) {
       if (!groups.has(group)) {
@@ -1430,7 +1439,7 @@ function settingsForm(key) {
       assign(await api(external ? endpoint : "/api/v1/settings/reset", {
         method: external ? "PATCH" : "POST",
         body: {
-          revision: config.revision,
+          revision: revision(),
           ...(external ? { changes: {} } : {}),
           [external ? "reset" : "keys"]: section.fields
             .map((f) => f[0])
@@ -1496,6 +1505,7 @@ function settingsForm(key) {
     );
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!form.reportValidity()) return;
     const changes = {};
     for (const input of form.querySelectorAll("input[name],select[name]")) {
       if (input.disabled) continue;
@@ -1514,7 +1524,7 @@ function settingsForm(key) {
     try {
       assign(await api(endpoint, {
         method: "PATCH",
-        body: { revision: config.revision, changes },
+        body: { revision: revision(), changes },
       }));
       form.replaceWith(settingsForm(key));
       renderGuardStatus();

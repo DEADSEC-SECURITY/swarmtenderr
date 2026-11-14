@@ -87,7 +87,7 @@ class Application:
         status, data, content_type, extra = 200, {}, "application/json", []
         path, method = environ.get("PATH_INFO", "/"), environ.get("REQUEST_METHOD", "GET")
         try:
-            if method == "GET" and path in {"/", "/app.js", "/style.css", "/logo.svg", "/charts.js", "/echarts-6.1.0.min.js"}:
+            if method == "GET" and path in {"/", "/app.js", "/style.css", "/logo.svg", "/charts.js", "/durations.js", "/echarts-6.1.0.min.js"}:
                 filename = "index.html" if path == "/" else path[1:]
                 content_type = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "svg": "image/svg+xml"}[filename.rsplit(".", 1)[1]]
                 data = (Path(__file__).parent / "static" / filename).read_bytes()

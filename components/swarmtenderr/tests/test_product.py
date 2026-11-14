@@ -64,7 +64,7 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(self.request("/api/v1/status")[0], 401)
 
     def test_static_login_assets_are_public_but_data_is_private(self):
-        for path in ("/", "/app.js", "/charts.js", "/echarts-6.1.0.min.js", "/style.css", "/logo.svg", "/healthz", "/api/v1/auth/options"):
+        for path in ("/", "/app.js", "/charts.js", "/durations.js", "/echarts-6.1.0.min.js", "/style.css", "/logo.svg", "/healthz", "/api/v1/auth/options"):
             self.assertEqual(self.request(path, auth=False)[0], 200)
         for path in ("/api/v1/status", "/api/v1/statistics", "/api/v1/completions", "/api/v1/completions.csv", "/api/v1/activity", "/api/v1/users"):
             self.assertEqual(self.request(path, auth=False)[0], 401)

@@ -103,7 +103,7 @@ def main():
             saved = request(url, '/api/v1/settings', {'revision': settings['revision'], 'changes': {'retention_days': 37}},
                 method='PATCH', opener=opener, csrf=login['csrf'])
             assert saved['values']['retention_days'] == 37
-            for asset in ('/', '/app.js', '/charts.js', '/echarts-6.1.0.min.js', '/style.css', '/logo.svg', '/healthz'):
+            for asset in ('/', '/app.js', '/charts.js', '/durations.js', '/echarts-6.1.0.min.js', '/style.css', '/logo.svg', '/healthz'):
                 assert request(url, asset)
             subprocess.run(['docker', 'run', '--rm', '--network', prefix, '--entrypoint', 'python', *mount,
                 image, '-B', '/tests/test_websocket_acceptance.py', f'ws://{name}:8787/api/v1/live'], check=True)
