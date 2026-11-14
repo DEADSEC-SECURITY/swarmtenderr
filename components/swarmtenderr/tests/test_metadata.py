@@ -97,6 +97,14 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(self.record()['phase'], 'timed_out')
         self.assertFalse(has_metadata(self.client.row))
 
+    def test_native_metadata_stop_condition_can_already_release_force(self):
+        self.start()
+        self.client.row.update(size=4096, total_size=4096, force_start=False, state='stoppedDL')
+        self.poll()
+        self.assertEqual(self.record()['phase'], 'acquired')
+        self.assertEqual(self.client.row['state'], 'stoppedDL')
+        self.assertEqual(self.client.calls, ['force_start', 'reannounce'])
+
     def test_stopped_torrent_is_stopped_again_after_acquisition(self):
         self.client = Client(stopped=True)
         self.start()

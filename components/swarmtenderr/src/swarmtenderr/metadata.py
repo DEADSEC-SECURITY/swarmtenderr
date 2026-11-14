@@ -219,6 +219,9 @@ class MetadataRequests:
                 self.finish(record, result, messages[result])
                 continue
             if not forced(row):
+                if has_metadata(row):
+                    self.finish(record, 'acquired', 'Metadata acquired; normal client control is already restored')
+                    continue
                 if not record.get('force_confirmed') and time.time() - record['started_at'] < 30 and time.time() < record['deadline']:
                     continue
                 self.finish(record, 'interrupted', 'No temporary force start is active; current client state was preserved')
