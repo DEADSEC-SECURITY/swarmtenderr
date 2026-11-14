@@ -137,3 +137,22 @@ run "reject_inconsistent_trial_window" {
   variables { defaults = { swarm_trial_seconds = 60 } }
   expect_failures = [var.defaults]
 }
+
+run "group_role_mappings" {
+  command = plan
+  variables {
+    defaults = { sso_admin_groups = ["administrators"], sso_operator_groups = ["operators"] }
+  }
+  assert {
+    condition     = length([for value in docker_container.app.env : value if startswith(value, "SWARMTENDERR_DEFAULTS_JSON=") && strcontains(value, "administrators") && strcontains(value, "operators")]) == 1
+    error_message = "Explicit role mappings must reach the app as public configuration."
+  }
+}
+
+run "reject_empty_admin_group" {
+  command = plan
+  variables {
+    defaults = { sso_admin_groups = [""] }
+  }
+  expect_failures = [var.defaults]
+}

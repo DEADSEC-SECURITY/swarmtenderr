@@ -30,6 +30,8 @@ class OidcTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.variant, self.codes, self.exchanges = '', {}, []
+        self.groups, self.extra_claims, self.omit_groups = ['media'], {}, False
+        self.during_exchange = None
         owner = self
 
         class Issuer(BaseHTTPRequestHandler):
@@ -66,13 +68,18 @@ class OidcTests(unittest.TestCase):
                 now = int(time.time())
                 claims = {'iss': owner.issuer, 'sub': 'stable-subject', 'aud': 'swarm-fixture', 'exp': now + 300,
                           'iat': now, 'nonce': authorization['nonce'][0], 'preferred_username': 'sso-fixture',
-                          'email': 'admin@example.test', 'groups': ['media']}
+                          'email': 'admin@example.test', 'groups': owner.groups, **owner.extra_claims}
                 claims.update({'issuer': {'iss': owner.issuer + '/wrong'}, 'audience': {'aud': 'other-client'},
                                'expired': {'exp': now - 3600}, 'nonce': {'nonce': 'wrong-nonce'},
                                'groups': {'groups': ['denied']}}.get(owner.variant, {}))
                 if owner.variant == 'no_nonce':
                     del claims['nonce']
+                if owner.omit_groups:
+                    del claims['groups']
                 key = owner.other_key if owner.variant == 'signature' else owner.key
+                if owner.during_exchange:
+                    action, owner.during_exchange = owner.during_exchange, None
+                    action()
                 token = jwt.encode({'alg': 'RS256', 'kid': 'fixture'}, claims, key)
                 self.reply({'access_token': 'isolated-access-token', 'token_type': 'Bearer', 'expires_in': 300, 'id_token': token})
 
@@ -144,3 +151,108 @@ class OidcTests(unittest.TestCase):
             headers={'Origin': 'http://localhost:8787', 'X-CSRF-Token': self.service.auth.csrf(session)})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertTrue(response.json()['ok'])
+
+    def configure_roles(self, **changes):
+        values = {'sso_admin_groups': ['administrators'], 'sso_operator_groups': ['operators'], **changes}
+        self.service.runtime.save(values, self.service.runtime.public()['revision'], 'fixture')
+
+    def sign_in(self):
+        response = self.client.get(self.begin())
+        self.assertEqual(response.status_code, 303, response.text)
+        return self.client.get('/api/v1/me').json()['user']
+
+    def test_verified_groups_provision_admin_with_precedence_and_admin_api_access(self):
+        self.configure_roles()
+        self.groups = ['media', 'operators', 'administrators']
+        user = self.sign_in()
+        self.assertEqual(user['role'], 'admin')
+        self.assertEqual(self.client.get('/api/v1/users').status_code, 200)
+        local = next(u for u in self.service.auth.users() if u['provider'] == 'local')
+        self.assertEqual(local['username'], 'admin')
+        self.assertNotEqual(user['id'], local['id'])
+
+    def test_existing_viewer_is_promoted_then_demoted_and_old_admin_sessions_revoked(self):
+        viewer = self.sign_in()
+        self.configure_roles()
+        self.groups = ['media', 'administrators']
+        admin = self.sign_in()
+        self.assertEqual((admin['id'], admin['role']), (viewer['id'], 'admin'))
+        first_admin = self.client.cookies.get('swarmtenderr_session')
+        self.sign_in()
+        second_admin = self.client.cookies.get('swarmtenderr_session')
+        self.groups = ['media', 'operators']
+        operator = self.sign_in()
+        self.assertEqual((operator['id'], operator['role']), (viewer['id'], 'operator'))
+        self.assertIsNone(self.service.auth.current(first_admin))
+        self.assertIsNone(self.service.auth.current(second_admin))
+        self.assertEqual(self.client.get('/api/v1/users').status_code, 403)
+        old_operator = self.client.cookies.get('swarmtenderr_session')
+        self.groups = ['media']
+        self.assertEqual(self.sign_in()['role'], 'viewer')
+        self.assertIsNone(self.service.auth.current(old_operator))
+
+    def test_removed_allowed_membership_denies_and_commits_old_session_revocation(self):
+        self.configure_roles()
+        self.groups = ['media', 'administrators']
+        user = self.sign_in()
+        token = self.client.cookies.get('swarmtenderr_session')
+        self.groups = ['administrators']
+        response = self.client.get(self.begin())
+        self.assertEqual(response.headers['location'], '/?auth_error=sso_denied')
+        self.assertIsNone(self.service.auth.current(token))
+        self.assertEqual(next(u for u in self.service.auth.users() if u['id'] == user['id'])['role'], 'viewer')
+
+    def test_malformed_groups_cannot_keep_admin_or_reuse_an_old_session(self):
+        self.configure_roles()
+        for groups in ('administrators', {'name': 'administrators'}, [['administrators']], None, [1]):
+            with self.subTest(groups=groups):
+                self.groups = ['media', 'administrators']
+                self.assertEqual(self.sign_in()['role'], 'admin')
+                token = self.client.cookies.get('swarmtenderr_session')
+                self.groups = groups
+                response = self.client.get(self.begin())
+                self.assertEqual(response.headers['location'], '/?auth_error=sso_denied')
+                self.assertIsNone(self.service.auth.current(token))
+
+    def test_clearing_role_lists_demotes_previously_mapped_accounts_only(self):
+        self.configure_roles()
+        self.groups = ['media', 'administrators']
+        user = self.sign_in()
+        self.configure_roles(sso_admin_groups=[], sso_operator_groups=[])
+        self.assertEqual(self.sign_in()['role'], 'viewer')
+        self.assertNotIn(user['id'], self.service.store.meta('sso_group_managed_users_v1'))
+        self.service.auth.update_user(user['id'], {'role': 'admin'}, 'fixture')
+        self.assertEqual(self.sign_in()['role'], 'admin')
+
+    def test_claimed_role_and_case_mismatch_do_not_grant_admin(self):
+        self.configure_roles()
+        self.extra_claims = {'role': 'admin', 'is_superuser': True}
+        self.groups = ['media', 'Administrators']
+        self.assertEqual(self.sign_in()['role'], 'viewer')
+
+    def test_missing_groups_demotes_when_allowlist_is_unrestricted(self):
+        self.configure_roles(sso_allowed_groups=[])
+        self.groups = ['administrators']
+        self.assertEqual(self.sign_in()['role'], 'admin')
+        token = self.client.cookies.get('swarmtenderr_session')
+        self.omit_groups = True
+        self.assertEqual(self.sign_in()['role'], 'viewer')
+        self.assertIsNone(self.service.auth.current(token))
+
+    def test_configured_operator_fallback_and_disabled_user_remain_enforced(self):
+        self.configure_roles(sso_default_role='operator')
+        self.assertEqual(self.sign_in()['role'], 'operator')
+        self.groups = ['media', 'administrators']
+        user = self.sign_in()
+        self.service.auth.update_user(user['id'], {'active': False}, 'fixture')
+        response = self.client.get(self.begin())
+        self.assertEqual(response.headers['location'], '/?auth_error=sso_denied')
+
+    def test_policy_change_during_code_exchange_cannot_issue_stale_admin_session(self):
+        self.configure_roles()
+        self.groups = ['media', 'administrators']
+        self.during_exchange = lambda: self.configure_roles(sso_admin_groups=['other-administrators'])
+        response = self.client.get(self.begin())
+        self.assertEqual(response.headers['location'], '/?auth_error=sso_denied')
+        self.assertEqual(len(self.service.auth.users()), 1)
+        self.assertEqual(self.sign_in()['role'], 'viewer')

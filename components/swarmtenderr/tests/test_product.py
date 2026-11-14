@@ -298,6 +298,40 @@ class ProductTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             create_app(replace(demo, demo=False), False)
 
+    def test_sso_role_policy_defaults_revoke_sso_on_startup_but_preserve_local_recovery(self):
+        from dataclasses import replace
+        self.app.runtime.save({'sso_issuer':'https://identity.example/application/o/swarm/'}, 0, 'fixture')
+        config = self.app.runtime.values()
+        claims = {'iss':config['sso_issuer'], 'sub':'owner', 'groups':['administrators']}
+        token = self.app.auth.sso_session(claims, config)
+        changed = replace(self.settings, defaults={'sso_admin_groups':['administrators']})
+        reopened = create_app(changed, False)
+        self.assertIsNone(reopened.auth.current(token))
+        self.assertIsNotNone(reopened.auth.current(self.token))
+        admin = reopened.auth.sso_session(claims, reopened.runtime.values())
+        self.assertEqual(reopened.auth.current(admin)['role'], 'admin')
+        same = create_app(changed, False)
+        self.assertIsNotNone(same.auth.current(admin))
+        self.assertIsNotNone(same.auth.current(self.token))
+
+    def test_sso_group_mapping_ui_edits_reset_and_validation_preserve_local_session(self):
+        config = self.app.runtime.values() | {'sso_issuer':'https://identity.example/application/o/swarm/'}
+        token = self.app.auth.sso_session({'iss':config['sso_issuer'], 'sub':'owner'}, config)
+        code, data, _ = self.request('/api/v1/settings', 'PATCH', {'revision':0,
+            'changes':{'sso_admin_groups':['administrators'], 'sso_operator_groups':['operators']}})
+        self.assertEqual(code, 200, data)
+        self.assertEqual(data['values']['sso_admin_groups'], ['administrators'])
+        self.assertIsNone(self.app.auth.current(token))
+        self.assertIsNotNone(self.app.auth.current(self.token))
+        for value in ['administrators', [''], [None], [['administrators']], ['a'*81], ['x']*101]:
+            with self.subTest(value=value):
+                self.assertEqual(self.request('/api/v1/settings', 'PATCH', {'revision':1,
+                    'changes':{'sso_admin_groups':value}})[0], 400)
+        self.assertEqual(self.request('/api/v1/settings/reset', 'POST', {'revision':1,
+            'keys':['sso_admin_groups','sso_operator_groups']})[0], 200)
+        self.assertEqual(self.app.runtime.values()['sso_admin_groups'], [])
+        self.assertIsNotNone(self.app.auth.current(self.token))
+
     def test_history_category_filters_and_period_comparison_are_real_data(self):
         now = time.time()
         rows = [{'hash': f'{i:040x}', 'name': 'Linux', 'progress': 1, 'size': 100,

@@ -30,6 +30,7 @@ class Application:
         self.runtime = Runtime(settings, store, vault)
         self.auth = Auth(store, vault)
         self.auth.bootstrap(settings)
+        self.auth.reconcile_sso_policy(self.runtime.values())
         self.analytics = Analytics(store)
         self.observer = Observer(settings, store, None, runtime=self.runtime)
 

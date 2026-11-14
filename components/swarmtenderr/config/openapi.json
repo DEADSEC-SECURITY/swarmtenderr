@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swarmtenderr API",
-    "version": "0.7.0",
+    "version": "0.8.1",
     "description": "Single-installation administration with cookie sessions, role checks, CSRF, durable completion records and write-only integration secrets. WebSocket /api/v1/live uses the same session cookie and exact Origin, sends snapshot and heartbeat frames, and closes 4401 after revocation."
   },
   "servers": [
@@ -2535,6 +2535,26 @@
             "type": "integer",
             "minimum": 60,
             "maximum": 1800
+          },
+          "sso_admin_groups": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "description": "Exact verified ID-token group names; role is synchronized at sign-in. Administrator groups take precedence over operator groups."
+          },
+          "sso_operator_groups": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "description": "Exact verified ID-token group names; role is synchronized at sign-in. Administrator groups take precedence over operator groups."
           }
         },
         "additionalProperties": false
@@ -2742,6 +2762,26 @@
                 "type": "integer",
                 "minimum": 60,
                 "maximum": 1800
+              },
+              "sso_admin_groups": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "description": "Exact verified ID-token group names; role is synchronized at sign-in. Administrator groups take precedence over operator groups."
+              },
+              "sso_operator_groups": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "description": "Exact verified ID-token group names; role is synchronized at sign-in. Administrator groups take precedence over operator groups."
               }
             },
             "required": [
@@ -2783,7 +2823,9 @@
               "trial_improvement_percent",
               "unknown_size_gib",
               "other_buffer_gib",
-              "metadata_fetch_seconds"
+              "metadata_fetch_seconds",
+              "sso_admin_groups",
+              "sso_operator_groups"
             ],
             "additionalProperties": false
           },

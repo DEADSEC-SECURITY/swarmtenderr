@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import time
@@ -10,6 +11,14 @@ import uuid
 
 ROLES = {"viewer": 0, "operator": 1, "admin": 2}
 COOKIE = "swarmtenderr_session"
+SSO_POLICY_KEYS = ("sso_enabled", "sso_issuer", "sso_client_id", "sso_allowed_groups",
+                   "sso_admin_groups", "sso_operator_groups", "sso_default_role")
+
+
+def sso_policy_fingerprint(config):
+    policy = {key: sorted(set(config.get(key, []))) if key.endswith("_groups") else config[key]
+              for key in SSO_POLICY_KEYS}
+    return hashlib.sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest()
 
 
 class AuthError(Exception):
@@ -59,6 +68,15 @@ class Auth:
                 validate_password(password)
             self._create(c, username, "Demo administrator" if settings.demo else "Administrator", "admin", password)
             self.store.audit("user.bootstrap", "system", {"username": username}, c)
+
+    def reconcile_sso_policy(self, config):
+        """Deployment-default changes must invalidate old SSO authorization too."""
+        fingerprint = sso_policy_fingerprint(config)
+        with self.store.connection(serialize=True) as c:
+            if self.store.meta("sso_session_policy_v1", None, c) != fingerprint:
+                self.store.execute(c, "DELETE FROM swarmtenderr_sessions WHERE user_id IN (SELECT id FROM swarmtenderr_users WHERE issuer <> '')")
+                self.store.set_meta(c, "sso_session_policy_v1", fingerprint)
+                self.store.audit("sso.policy_reconciled", "system", {}, c)
 
     def _create(self, c, username, display_name, role, password="", issuer="", subject=""):
         if not isinstance(username, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,63}", username):
@@ -182,15 +200,48 @@ class Auth:
         if not isinstance(issuer, str) or issuer.rstrip("/") != config["sso_issuer"].rstrip("/") or not isinstance(subject, str) or not subject:
             raise AuthError("SSO identity could not be verified", 403)
         groups = claims.get("groups", [])
-        if config["sso_allowed_groups"] and (not isinstance(groups, list) or not set(groups) & set(config["sso_allowed_groups"])):
-            raise AuthError("This SSO account is not allowed access", 403)
+        valid_groups = isinstance(groups, list) and all(isinstance(group, str) for group in groups)
+        groups = set(groups) if valid_groups else set()
+        allowed = valid_groups and (not config["sso_allowed_groups"] or bool(groups & set(config["sso_allowed_groups"])))
+        admin_groups, operator_groups = config.get("sso_admin_groups", []), config.get("sso_operator_groups", [])
+        mapped = bool(admin_groups or operator_groups)
+        role = ("admin" if groups & set(admin_groups) else "operator" if groups & set(operator_groups)
+                else config["sso_default_role"])
+        denied = False
         with self.store.connection(serialize=True) as c:
+            if config.get("revision") != self.store.meta("config_revision", 0, c):
+                raise AuthError("SSO settings changed. Start sign-in again.", 403)
             rows = self.store.objects(self.store.execute(c, "SELECT * FROM swarmtenderr_users WHERE issuer=? AND subject=?", (issuer, subject)))
-            if not rows:
+            managed = set(self.store.meta("sso_group_managed_users_v1", [], c))
+            if not allowed:
+                if rows:
+                    row = rows[0]
+                    self.store.execute(c, "DELETE FROM swarmtenderr_sessions WHERE user_id=?", (row["id"],))
+                    if (mapped or row["id"] in managed) and row["role"] != "viewer":
+                        self.store.execute(c, "UPDATE swarmtenderr_users SET role='viewer' WHERE id=?", (row["id"],))
+                    self.store.audit("sso.access_denied", row["username"], {"user": row["id"]}, c)
+                denied = True
+            elif rows and not rows[0]["active"]:
+                denied = True
+            elif not rows:
                 base = re.sub(r"[^a-z0-9._-]", "-", str(claims.get("preferred_username", claims.get("name", "sso-user"))).lower())[:45].strip("-.") or "sso-user"
                 username = (base if len(base) >= 3 else "sso-" + base) + "-" + hashlib.sha256((issuer + subject).encode()).hexdigest()[:8]
-                identity = self._create(c, username, str(claims.get("name") or username)[:100], config["sso_default_role"], issuer=issuer, subject=subject)
+                identity = self._create(c, username, str(claims.get("name") or username)[:100], role, issuer=issuer, subject=subject)
                 rows = self.store.objects(self.store.execute(c, "SELECT * FROM swarmtenderr_users WHERE id=?", (identity,)))
-            if not rows[0]["active"]:
-                raise AuthError("This account is disabled", 403)
-            return self._session(c, rows[0])
+            if not denied:
+                row = rows[0]
+                if mapped or row["id"] in managed:
+                    if row["role"] != role:
+                        self.store.execute(c, "UPDATE swarmtenderr_users SET role=? WHERE id=?", (role, row["id"]))
+                        self.store.execute(c, "DELETE FROM swarmtenderr_sessions WHERE user_id=?", (row["id"],))
+                        self.store.audit("sso.role_synced", row["username"], {"user": row["id"], "previous_role": row["role"], "role": role}, c)
+                    if mapped:
+                        managed.add(row["id"])
+                    else:
+                        managed.discard(row["id"])
+                    self.store.set_meta(c, "sso_group_managed_users_v1", sorted(managed))
+                token = self._session(c, row)
+        # Raise outside the transaction so denial commits session revocation.
+        if denied:
+            raise AuthError("This SSO account is not allowed access", 403)
+        return token

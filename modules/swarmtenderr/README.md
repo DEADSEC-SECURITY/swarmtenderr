@@ -21,6 +21,8 @@ module "swarmtenderr" {
     sso_issuer         = "https://identity.example.internal/application/o/swarmtenderr/"
     sso_client_id      = "PUBLIC_CLIENT_ID"
     sso_allowed_groups = ["media"]
+    sso_admin_groups   = ["media-administrators"]
+    sso_operator_groups = ["media-operators"]
   }
   oidc_secret_file = "/run/operator-secrets/swarmtenderr-oidc-secret"
   identity_ca_file = "/etc/ssl/certs/lab-ca-bundle.pem"
@@ -47,3 +49,9 @@ a trusted binding. The volume has `prevent_destroy`; replacing data needs a back
 and migration decision. `swarmtenderr_contract_v1` retains public endpoint/image/
 database metadata. Run `terraform fmt -check -recursive`, `init -backend=false`,
 `validate` and `test` (mocked Docker; no infrastructure apply).
+
+Role mappings use exact verified ID-token group names and synchronize existing SSO
+accounts on every sign-in. Admin takes precedence over Operator, then the
+viewer/operator fallback applies. Allowed groups remain a separate sign-in gate.
+Removing both role lists returns previously mapped accounts to the fallback on
+their next sign-in. Keep a local administrator for recovery.
