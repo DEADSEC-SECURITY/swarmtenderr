@@ -24,17 +24,19 @@ def observe_metadata(row, entry, now, running_states):
     active = not known and row.get('state') in running_states
     elapsed = now - record.get('observed_at', now)
     if record.get('active'):
-        if 0 <= elapsed <= 60:
+        if not 0 <= elapsed <= 60:
+            record['gap'] = True
+        if active and 0 <= elapsed <= 60:
             record['active_seconds'] = record.get('active_seconds', 0) + elapsed
         if not active:
             outcome = ('metadata' if known else 'no_metadata'
-                       if record.get('active_seconds', 0) >= 60 and 0 <= elapsed <= 60
+                       if record.get('active_seconds', 0) >= 60 and not record.get('gap', False)
                        else 'unobserved')
             counter = {'metadata': 'successes', 'no_metadata': 'failures', 'unobserved': 'unobserved'}[outcome]
             record[counter] += 1
             record.update(last_outcome=outcome, last_at=now, active=False)
     elif active:
-        record.update(active=True, started_at=now, active_seconds=0)
+        record.update(active=True, started_at=now, active_seconds=0, gap=False)
         record['attempts'] += 1
     record['observed_at'] = now
     return known, record

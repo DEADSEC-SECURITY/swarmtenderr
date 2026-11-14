@@ -109,6 +109,24 @@ class ExplanationTests(unittest.TestCase):
         self.assertEqual(explanations.sanitize([raw])[0]['score']['seconds'],0)
         self.assertEqual(explanations.sanitize([None,{}]),[])
 
+    def test_gap_in_the_middle_of_an_active_window_stays_unconfirmed(self):
+        entry={}; torrent=row();torrent.update(amount_left=0,state='metaDL')
+        for now in (100,130,160,1000,1030):
+            explanations.observe_metadata(torrent,entry,now,admission.RUNNING_STATES)
+        torrent['state']='queuedDL'
+        _,record=explanations.observe_metadata(torrent,entry,1060,admission.RUNNING_STATES)
+        self.assertEqual(record['failures'],0)
+        self.assertEqual(record['unobserved'],1)
+
+    def test_transition_to_queued_is_not_a_confirmed_active_interval(self):
+        entry={}; torrent=row();torrent.update(amount_left=0,state='metaDL')
+        for now in (100,130):explanations.observe_metadata(torrent,entry,now,admission.RUNNING_STATES)
+        torrent['state']='queuedDL'
+        _,record=explanations.observe_metadata(torrent,entry,160,admission.RUNNING_STATES)
+        self.assertEqual(record['active_seconds'],30)
+        self.assertEqual(record['failures'],0)
+        self.assertEqual(record['unobserved'],1)
+
     def test_external_feed_joins_full_ranking_and_marks_staleness(self):
         result,_=self.explain({'a':row()},now=time.time())
         with tempfile.TemporaryDirectory() as directory:
