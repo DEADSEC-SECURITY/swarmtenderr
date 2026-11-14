@@ -1,1 +1,1 @@
-"""Canonical portable scheduling policy, shared with Apollo. No import side effects."""
+"""Canonical portable scheduling policy for Swarmtenderr. No import side effects."""

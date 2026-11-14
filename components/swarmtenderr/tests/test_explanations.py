@@ -76,6 +76,13 @@ class ExplanationTests(unittest.TestCase):
         self.assertFalse(result['a']['metadata']['known'])
         self.assertIn('metadata', {b['code'] for b in result['a']['blockers']})
 
+    def test_external_controller_can_supply_its_own_protection_tags(self):
+        torrent = row(); torrent['tags'] = 'operator-keep'
+        result, _ = explanations.build({}, {'a': torrent}, {}, {}, 1000,
+                                       admission, policy=POLICY, protected_tags=['operator-keep'])
+        self.assertEqual(result[0]['decision'], 'Not eligible')
+        self.assertIn('protected', {block['code'] for block in result[0]['blockers']})
+
     def test_observed_metadata_attempt_no_metadata_then_success(self):
         entry={}; torrent=row(); torrent.update(amount_left=0, state='metaDL')
         for now in (100,130,160): explanations.observe_metadata(torrent,entry,now,admission.RUNNING_STATES)

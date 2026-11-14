@@ -46,7 +46,8 @@ def optimizer(path):
         return {"connected": False, "reason": "Optimizer snapshot unavailable", "rows": [], "events": []}
 
 
-def projection(rows, engine):
+def projection(rows, engine, *, protected_tags=()):
+    protected_tags = frozenset(protected_tags) | {"swarmtenderr-keep"}
     decisions = {row["torrent"]: row for row in engine.get("rows", [])}
     rankings = {row["torrent"]: row for row in sanitize(engine.get("rankings", []))}
     result = []
@@ -58,7 +59,7 @@ def projection(rows, engine):
         state = text(row.get("state"), 32)
         tags = set(str(row.get("tags", "")).replace(" ", "").split(","))
         protected = (progress >= 1 or row.get("force_start", False) or state == "forcedDL"
-                     or bool(tags & {"apollo-keep", "swarmtenderr-keep"}))
+                     or bool(tags & protected_tags))
         speed = max(0, number(row.get("dlspeed")))
         remaining = max(0, number(row.get("amount_left")))
         # Unknown metadata or a queued torrent has no reliable finish time.
@@ -111,9 +112,11 @@ class Observer:
         config = self.runtime.values()
         if not config['qbit_url'] or not config['qbit_password']:
             raise UpstreamError('Configure the qBittorrent connection in Settings')
-        identity = (config['qbit_url'], config['qbit_username'], hashlib.sha256(config['qbit_password'].encode()).hexdigest())
+        identity = (config['qbit_url'], config['qbit_username'], hashlib.sha256(config['qbit_password'].encode()).hexdigest(),
+                    tuple(sorted(config['excluded_tags'])))
         if identity != self.client_identity:
-            self.client = Qbit(config['qbit_url'], config['qbit_username'], password=config['qbit_password'])
+            self.client = Qbit(config['qbit_url'], config['qbit_username'], password=config['qbit_password'],
+                               protected_tags=config['excluded_tags'])
             self.client_identity = identity
         return self.client
 
@@ -140,7 +143,7 @@ class Observer:
                     engine = self.controller.poll(self.get_client(), rows, config)
                 except Exception:
                     engine = {"connected": False, "reason": "Policy evaluation failed; check native queue settings, capacity and pending requests in Activity", "rows": [], "events": []}
-            torrents = projection(rows, engine)
+            torrents = projection(rows, engine, protected_tags=config.get('excluded_tags', ()))
             public_engine = {key: value for key, value in engine.items() if key != 'rankings'}
             public_engine['ranking_count'] = len(engine.get('rankings', []))
             data = {"observed_at": time.time(), "demo": self.settings.demo,

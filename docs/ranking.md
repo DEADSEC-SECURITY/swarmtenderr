@@ -3,7 +3,7 @@
 Torrents → Optimizer rank sorts the current eligible plan. Click a rank or inspect
 the torrent to see why it was chosen or is waiting. Plan rank is a recommendation;
 qBittorrent's native queue position is displayed separately. Observe mode never
-claims to have applied that recommendation. Apollo's external integration reports
+claims to have applied that recommendation. An external controller reports
 the active native guard's policy, not a second scheduler.
 
 The completion policy compares complete-source availability, then useful measured

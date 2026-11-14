@@ -24,9 +24,10 @@ HASH = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\Z")
 
 
 class Qbit:
-    def __init__(self, url, username, password_file="", *, password=None):
+    def __init__(self, url, username, password_file="", *, password=None, protected_tags=()):
         self.url, self.username, self.password_file = url, username, password_file
         self._password = password
+        self.protected_tags = frozenset(protected_tags) | {"swarmtenderr-keep"}
         self.cookies = CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(), urllib.request.HTTPCookieProcessor(self.cookies))
         self.lock = threading.RLock()
@@ -77,7 +78,7 @@ class Qbit:
         row = rows[0]
         if (row.get("progress", 1) >= 1 or row.get("force_start", False)
                 or row.get("state") == "forcedDL"
-                or {"apollo-keep", "swarmtenderr-keep"} & set(str(row.get("tags", "")).replace(" ", "").split(","))):
+                or self.protected_tags & set(str(row.get("tags", "")).replace(" ", "").split(","))):
             raise ValueError("Completed, force-started and protected torrents cannot be controlled")
         if eligible is not None and not eligible(row):
             raise ValueError("Torrent no longer belongs to the managed category scope")

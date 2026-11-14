@@ -1,7 +1,7 @@
 # Candidate verification and stable promotion
 
 The public Swarmtenderr repository owns source, versions, the Terraform module,
-CI and releases. Apollo consumes a tested immutable image. Its shared policy is
+CI and releases. Deployments consume tested immutable images. Its shared policy is
 a pinned public source artifact with a commit and SHA-256 manifest; compatibility
 imports preserve the existing installed API. Do not maintain a second policy fork.
 
@@ -30,7 +30,7 @@ After acceptance, run **Promote accepted Swarmtenderr digest** with the exact di
 and package version. It promotes the existing manifest, checks the stable tag has
 the same digest and performs no Docker build. The stable version and `latest` both
 reference the accepted manifest. An existing version cannot be overwritten by a
-different digest; upgrade by releasing a new version. Update Apollo's image input through
+different digest; upgrade by releasing a new version. Update the installation's image input through
 its existing deployment owner; review a scoped plan and reject unrelated changes.
 
 Back up before migration, retain the previous image/database/key recovery set,

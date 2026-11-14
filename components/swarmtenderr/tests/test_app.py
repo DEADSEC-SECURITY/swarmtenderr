@@ -13,7 +13,8 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 from swarmtenderr.app import create_app
-from swarmtenderr.observer import optimizer, projection
+from swarmtenderr.observer import Observer, optimizer, projection
+from types import SimpleNamespace
 from swarmtenderr.qbit import Qbit, UpstreamError
 from swarmtenderr.settings import Settings
 from swarmtenderr.store import Store
@@ -76,10 +77,17 @@ class QbitHttpTests(unittest.TestCase):
         self.assertEqual(self.requests[-1][1], "/api/v2/torrents/stop")
 
     def test_protected_transfers_make_no_control_post(self):
-        for progress, tags, force in ((1, "", False), (.5, "apollo-keep", False), (.5, "swarmtenderr-keep", False), (.5, "", True)):
+        for progress, tags, force in ((1, "", False), (.5, "swarmtenderr-keep", False), (.5, "", True)):
             self.progress, self.tags, self.force = progress, tags, force
             with self.assertRaises(ValueError):
                 self.client.action(HASH, "pause")
+        self.assertFalse(any("/torrents/stop" in path for _, path, _ in self.requests))
+
+    def test_configured_operator_tag_is_rechecked_before_mutation(self):
+        client = Qbit(self.client.url, "admin", self.client.password_file, protected_tags=["operator-keep"])
+        self.tags = "operator-keep"
+        with self.assertRaises(ValueError):
+            client.action(HASH, "pause")
         self.assertFalse(any("/torrents/stop" in path for _, path, _ in self.requests))
 
     def test_arbitrary_or_bulk_operations_are_rejected(self):
@@ -87,6 +95,26 @@ class QbitHttpTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.client.action(identity, action)
         self.assertEqual(self.requests, [])
+
+
+class ConfiguredProtectionTests(unittest.TestCase):
+    def test_projection_uses_operator_configuration(self):
+        rows = [{"hash": HASH, "progress": .5, "state": "queuedDL", "tags": "operator-keep"}]
+        self.assertFalse(projection(rows, {})[0]['protected'])
+        self.assertTrue(projection(rows, {}, protected_tags=['operator-keep'])[0]['protected'])
+
+    def test_changed_tag_configuration_rebuilds_the_mutation_adapter(self):
+        config = {'qbit_url': 'http://client:8080', 'qbit_username': 'admin',
+                  'qbit_password': 'test-only-fixture', 'excluded_tags': ['operator-keep']}
+        observer = Observer(None, None, None, SimpleNamespace(values=lambda: config))
+        first = observer.get_client()
+        self.assertIn('operator-keep', first.protected_tags)
+        config['excluded_tags'] = ['another-keep']
+        second = observer.get_client()
+        self.assertIsNot(first, second)
+        self.assertNotIn('operator-keep', second.protected_tags)
+        self.assertIn('another-keep', second.protected_tags)
+        self.assertIn('swarmtenderr-keep', second.protected_tags)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@ GIB = 1024**3
 RESERVE = 50 * GIB
 OTHER_BUFFER = 5 * GIB
 UNKNOWN_RESERVATION = 2 * GIB
-STATE_PATH = '/srv/cinema-state/state/download-space-guard.json'
 
 
 def requested_slots(preferences, state):
@@ -23,13 +22,15 @@ def requested_slots(preferences, state):
     return current
 
 
-def preserved_slots(current):
-    """Only accept a zero-slot cap when durable, root-owned state proves ownership."""
+def preserved_slots(current, *, state_path=None):
+    """Only accept a zero cap when a private, explicitly selected record owns it."""
     if current!=0:return current
-    import json,stat
+    if state_path is None:
+        raise RuntimeError('A capacity ownership record is required')
+    import json,os,stat
     from pathlib import Path
-    path=Path(STATE_PATH);metadata=path.lstat()
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=0 or stat.S_IMODE(metadata.st_mode)!=0o600:
+    path=Path(state_path);metadata=path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or stat.S_IMODE(metadata.st_mode)!=0o600:
         raise RuntimeError('Capacity ownership record is unsafe')
     previous=json.loads(path.read_text()).get('space_plan',{})
     if 0 not in (previous.get('applied_slots'),previous.get('observed_slots')) or not 1<=previous.get('requested_slots',0)<=100:
@@ -56,7 +57,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     # allocation must be paid before any automatic work can be promised space.
     external=[r for h,r in rows.items() if r.get('progress',1)<1 and r.get('state') in admission.RUNNING_STATES
               and (h not in owned or r.get('force_start') or r.get('state')=='forcedDL'
-                   or 'apollo-keep' in str(r.get('tags','')).split(','))]
+                   or 'swarmtenderr-keep' in str(r.get('tags','')).split(','))]
     external_ssd=sum(requirements(r, policy=policy)['ssd'] for r in external)
     external_library=sum(requirements(r, policy=policy)['library'] for r in external)
     budget=max(0,budget-external_ssd)
@@ -69,7 +70,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     eligible={h:r for h,r in rows.items() if h in owned and r.get('progress',1)<1
               and r.get('state') in admission.ACTIVE_STATES|admission.STOPPED_STATES
               and r.get('state')!='forcedDL' and not r.get('force_start')
-              and 'apollo-keep' not in str(r.get('tags','')).split(',')}
+              and 'swarmtenderr-keep' not in str(r.get('tags','')).split(',')}
     ordered=list(dict.fromkeys(proposed['front']+proposed['order']+
         sorted(eligible,key=lambda h:admission.priority(eligible[h],history.get(h,{}),now, policy=policy))))
     selected=[];deferred={};ssd=0;library=0;unknown=0;discovery_unknown=0

@@ -25,7 +25,7 @@ class Runtime:
             "poll_seconds": settings.poll_seconds, "retention_days": 30,
             "timezone": settings.timezone, "controls_enabled": settings.controls,
             "policy_mode": "observe", "download_slots": 3,
-            "managed_categories": [], "excluded_tags": ["apollo-keep", "swarmtenderr-keep"],
+            "managed_categories": [], "excluded_tags": ["swarmtenderr-keep"],
             "minimum_free_gib": 50, "work_budget_gib": 500, "library_reserve_gib": 50,
             **POLICY_DEFAULTS,
             "sso_enabled": False, "sso_issuer": "", "sso_client_id": "",

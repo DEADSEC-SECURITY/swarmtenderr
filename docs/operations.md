@@ -11,7 +11,7 @@ For a portable, consistent SQLite or PostgreSQL backup:
 
 ```sh
 docker compose -f components/swarmtenderr/config/compose.yaml run --rm --no-deps \
-  --entrypoint apollo-swarmtenderr-maintenance swarmtenderr \
+  --entrypoint swarmtenderr-maintenance swarmtenderr \
   backup --file /data/backup.json
 ```
 
@@ -32,7 +32,7 @@ PostgreSQL URL through its runtime secret file when changing backend. Mount the
 private backup read-only, then run:
 
 ```sh
-apollo-swarmtenderr-maintenance restore --file /backup/backup.json
+swarmtenderr-maintenance restore --file /backup/backup.json
 ```
 
 Use the image's maintenance entrypoint with the destination `/data` volume and the
@@ -55,7 +55,7 @@ For on-host recovery, run the normal image as its app UID with the existing volu
 database configuration and a newly prepared private password file:
 
 ```sh
-apollo-swarmtenderr --reset-password-for admin --password-file /run/secrets/recovery-password
+swarmtenderr --reset-password-for admin --password-file /run/secrets/recovery-password
 ```
 
 This replaces the local password hash and revokes its sessions; no password is
