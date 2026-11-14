@@ -901,22 +901,26 @@ function renderDetails() {
   }
   let reason = "";
   if (!current) reason = "This torrent is no longer in the client.";
-  else if (row.protected)
-    reason = "Completed, force-started and keep-tagged torrents are protected.";
   else if (state.user.role === "viewer")
     reason = "Your viewer account cannot change torrents.";
-  else if (state.status.stale)
-    reason = "Controls are unavailable while observations are stale.";
   else if (!state.status.snapshot.controls)
     reason = state.status.demo
       ? "Client operations are disabled for demo data."
-      : "Torrent controls are disabled by this installation’s settings.";
+      : "Configure the qBittorrent connection in Settings to use torrent controls.";
   $("control-note").textContent =
     reason ||
-    "Actions are recorded before submission. The next observation confirms supported state changes.";
+    "You can control torrents directly. Force start bypasses the normal queue; Return to queue hands control back. Each request checks the client and is recorded in Activity.";
+  const force = $("force-start-action");
+  force.dataset.action = row.force_start ? "unforce" : "force_start";
+  force.textContent = row.force_start ? "Return to queue" : "Force start";
   document
     .querySelectorAll("[data-action]")
-    .forEach((b) => (b.disabled = !!reason));
+    .forEach((b) => {
+      const complete = b.dataset.action === "prioritize" && row.progress >= 1;
+      b.disabled = !!reason || complete;
+      b.title = complete ? "Completed torrents do not have a download queue position" :
+        b.dataset.action === "prioritize" ? "Changes native queue order. Use Force start to bypass automatic scheduling." : "";
+    });
 }
 function renderRanking(row) {
   const target = $("detail-ranking"), ranking = row.ranking;
@@ -1204,12 +1208,6 @@ const settingSections = {
           ["observe", "Observe"],
           ["enforce", "Enforce"],
         ],
-      ],
-      [
-        "controls_enabled",
-        "Manual torrent controls",
-        "checkbox",
-        "Allows administrators and operators to use permitted pause, resume, priority and reannounce actions.",
       ],
       [
         "managed_categories",

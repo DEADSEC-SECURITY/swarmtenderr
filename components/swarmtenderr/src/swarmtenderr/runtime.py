@@ -1,4 +1,4 @@
-"""Validated settings, deployment locks, optimistic writes and write-only secrets."""
+"""Editable deployment defaults, optimistic writes and write-only secrets."""
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -23,7 +23,7 @@ class Runtime:
         self.defaults = {
             "qbit_url": settings.qbit_url, "qbit_username": settings.qbit_user,
             "poll_seconds": settings.poll_seconds, "retention_days": 30,
-            "timezone": settings.timezone, "controls_enabled": settings.controls,
+            "timezone": settings.timezone, "controls_enabled": True,
             "policy_mode": "observe", "download_slots": 3,
             "managed_categories": [], "excluded_tags": ["swarmtenderr-keep"],
             "minimum_free_gib": 50, "work_budget_gib": 500, "library_reserve_gib": 50,
@@ -42,14 +42,16 @@ class Runtime:
 
     def values(self, snapshot=None):
         revision, saved, policy_revision, ack_revision = self.store.config(include_policy=True) if snapshot is None else snapshot
-        values = {**self.defaults, **{key: value for key, value in saved.items() if key not in SECRET_KEYS and key not in self.settings.locked_settings}}
-        values["qbit_password"] = self.vault.decrypt(saved["qbit_password"]) if "qbit_password" in saved and "qbit_password" not in self.settings.locked_settings else read_secret(self.settings.qbit_password_file)
-        values["sso_client_secret"] = self.vault.decrypt(saved["sso_client_secret"]) if "sso_client_secret" in saved and "sso_client_secret" not in self.settings.locked_settings else read_secret(self.settings.oidc_secret_file)
+        values = {**self.defaults, **{key: value for key, value in saved.items() if key not in SECRET_KEYS}}
+        values["qbit_password"] = self.vault.decrypt(saved["qbit_password"]) if "qbit_password" in saved else read_secret(self.settings.qbit_password_file)
+        values["sso_client_secret"] = self.vault.decrypt(saved["sso_client_secret"]) if "sso_client_secret" in saved else read_secret(self.settings.oidc_secret_file)
         values["revision"] = revision
         values["policy_revision"] = policy_revision
         values["policy_ack_revision"] = ack_revision
+        # Manual intent is authorized by account role, independently of the
+        # automatic scheduler and deprecated deployment control switches.
+        values["controls_enabled"] = not self.settings.demo
         if self.settings.demo or self.settings.optimizer_state:
-            values["controls_enabled"] = False
             values["policy_mode"] = "observe"
         return values
 
@@ -57,12 +59,12 @@ class Runtime:
         snapshot = self.store.config(include_policy=True)
         revision, saved = snapshot[:2]
         values = self.values(snapshot)
-        locked = set(self.settings.locked_settings)
+        locked = set()
         if self.settings.demo:
             locked |= {"qbit_url", "qbit_username", "qbit_password", "sso_enabled",
                        "sso_issuer", "sso_client_id", "sso_client_secret", "controls_enabled", "policy_mode"}
         if self.settings.optimizer_state:
-            locked |= OPTIMIZER_KEYS | {"controls_enabled"}
+            locked |= OPTIMIZER_KEYS
         return {"revision": revision,
                 "values": {key: values[key] for key in self.defaults},
                 "secrets": {key: bool(values[key]) for key in SECRET_KEYS},

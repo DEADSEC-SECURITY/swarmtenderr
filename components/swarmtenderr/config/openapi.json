@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swarmtenderr API",
-    "version": "0.5.1",
+    "version": "0.6.0",
     "description": "Single-installation administration with cookie sessions, role checks, CSRF, durable completion records and write-only integration secrets. WebSocket /api/v1/live uses the same session cookie and exact Origin, sends snapshot and heartbeat frames, and closes 4401 after revocation."
   },
   "servers": [
@@ -995,7 +995,7 @@
       },
       "patch": {
         "operationId": "patch__api_v1_settings",
-        "summary": "Atomically save unlocked settings",
+        "summary": "Atomically save administrator settings",
         "x-minimum-role": "admin",
         "responses": {
           "200": {
@@ -1106,7 +1106,7 @@
     "/api/v1/settings/reset": {
       "post": {
         "operationId": "post__api_v1_settings_reset",
-        "summary": "Reset unlocked fields to deployment defaults",
+        "summary": "Reset fields to deployment defaults",
         "x-minimum-role": "admin",
         "responses": {
           "200": {
@@ -1963,7 +1963,9 @@
                       "pause",
                       "resume",
                       "prioritize",
-                      "reannounce"
+                      "reannounce",
+                      "force_start",
+                      "unforce"
                     ]
                   }
                 },
@@ -2001,7 +2003,8 @@
               "type": "string"
             }
           }
-        ]
+        ],
+        "description": "Operators and administrators may issue explicit single-torrent actions, including force start and return to queue. Automatic optimizer exclusions and deployment switches do not block manual intent. Demo mode cannot mutate a real client."
       }
     },
     "/auth/oidc/login": {
@@ -2344,7 +2347,9 @@
             "type": "string"
           },
           "controls_enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "deprecated": true,
+            "description": "Compatibility field: manual actions are always available by role outside demo mode."
           },
           "policy_mode": {
             "enum": [
@@ -2556,7 +2561,9 @@
                 "type": "string"
               },
               "controls_enabled": {
-                "type": "boolean"
+                "type": "boolean",
+                "deprecated": true,
+                "description": "Compatibility field: manual actions are always available by role outside demo mode."
               },
               "policy_mode": {
                 "enum": [

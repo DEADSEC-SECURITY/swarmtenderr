@@ -259,10 +259,12 @@ class Store:
                 row = indexed.get(torrent)
                 if not row or action == "reannounce":
                     continue
-                stopped = row.get("state") in {"stoppedDL", "pausedDL"}
+                stopped = row.get("state") in {"stoppedDL", "pausedDL", "stoppedUP", "pausedUP"}
+                forced = bool(row.get("force_start") or row.get("state") in {"forcedDL", "forcedUP"})
                 confirmed = ((action == "pause" and stopped) or
                              (action == "resume" and not stopped) or
-                             (action == "prioritize" and row.get("priority") == 1))
+                             (action == "prioritize" and row.get("priority") == 1) or
+                             (action == "force_start" and forced) or (action == "unforce" and not forced))
                 outcome = "confirmed" if confirmed else "uncertain" if time.time() - requested > 120 else None
                 if outcome:
                     self.execute(c, "UPDATE swarmtenderr_actions SET outcome=? WHERE id=?", (outcome, identity))

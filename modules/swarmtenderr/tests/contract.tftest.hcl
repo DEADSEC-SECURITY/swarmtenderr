@@ -14,8 +14,8 @@ run "sqlite_default" {
     error_message = "SQLite must be the default."
   }
   assert {
-    condition     = contains(docker_container.app.env, "SWARMTENDERR_CONTROLS=false")
-    error_message = "Controls must be opt-in."
+    condition     = contains(docker_container.app.env, "SWARMTENDERR_CONTROLS=true")
+    error_message = "Manual controls must be available by account role."
   }
 }
 
@@ -79,8 +79,8 @@ run "oidc_defaults_locks_and_narrow_feed" {
     error_message = "External mode must consume the narrow feed."
   }
   assert {
-    condition     = contains(docker_container.app.env, "SWARMTENDERR_LOCKED_SETTINGS=sso_issuer,sso_client_id")
-    error_message = "Deployment locks must reach the app."
+    condition     = contains(docker_container.app.env, "SWARMTENDERR_LOCKED_SETTINGS=")
+    error_message = "Legacy deployment lock inputs must not block UI edits."
   }
 }
 

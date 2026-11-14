@@ -1,7 +1,7 @@
 # Swarmtenderr Docker module
 
 Terraform owns the container, protected persistent volume, networking, public
-configuration defaults and settings locks. Credentials stay in runtime host files;
+configuration defaults. Credentials stay in runtime host files;
 the module never reads their values into plans, state, outputs or image layers.
 
 ```hcl
@@ -24,7 +24,6 @@ module "swarmtenderr" {
   }
   oidc_secret_file = "/run/operator-secrets/swarmtenderr-oidc-secret"
   identity_ca_file = "/etc/ssl/certs/lab-ca-bundle.pem"
-  locked_settings  = ["sso_issuer", "sso_client_id"]
 }
 ```
 
@@ -37,8 +36,8 @@ uses `postgres_url_file` and optional `postgres_ca_file` references. Provision i
 database/schema separately and use verified TLS remotely. SQLite remains the
 default. Both backends require the persistent `/data` encryption key.
 
-Saved UI settings override unlocked defaults. Locked deployment settings also take
-precedence over older saved overrides. Never put a secret into `defaults`.
+Saved UI settings override deployment defaults. Legacy `locked_settings` and
+`controls_enabled` inputs no longer gate administrator edits or manual controls. Never put a secret into `defaults`.
 `observer_feed_file` mounts a sanitized feed and forces observation.
 `library_probe_path` optionally mounts an import filesystem read-only for actual
 capacity probing; it grants no media write access.

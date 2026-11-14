@@ -136,11 +136,12 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(data["values"]["poll_seconds"], 3)
         self.assertEqual(data["sources"]["poll_seconds"], "deployment")
 
-    def test_deployment_locks_and_validation(self):
+    def test_deployment_defaults_remain_editable_and_validation_holds(self):
         from dataclasses import replace
         locked = create_app(replace(self.settings, locked_settings=("poll_seconds",)), False)
-        with self.assertRaises(PermissionError):
-            locked.runtime.save({"poll_seconds": 5}, 0, "admin")
+        locked.runtime.save({"poll_seconds": 5}, 0, "admin")
+        self.assertEqual(locked.runtime.values()["poll_seconds"], 5)
+        self.assertNotIn("poll_seconds", locked.runtime.public()["locked"])
         for change in ({"timezone": "No/SuchZone"}, {"poll_seconds": 0}, {"qbit_url": "https://user:secret@example.org"},
                        {"policy_mode": "enforce"}, {"sso_default_role": "admin"}):
             with self.assertRaises(ValueError):
@@ -152,11 +153,32 @@ class ProductTests(unittest.TestCase):
             get.return_value.action.side_effect = UpstreamError("timeout")
             code, result, _ = self.request(f"/api/v1/torrents/{HASH}/actions", "POST", {"action": "resume"})
             self.assertEqual(code, 502)
-            get.return_value.action.assert_called_once_with(HASH, "resume")
+            get.return_value.action.assert_called_once_with(HASH, "resume", manual=True)
             self.assertEqual(self.app.store.history()["actions"][0]["outcome"], "uncertain")
         with patch.object(self.app.store, "begin_action", side_effect=OSError("private-database-error")), patch.object(self.app.observer, "get_client") as get:
             self.assertEqual(self.request(f"/api/v1/torrents/{HASH}/actions", "POST", {"action": "resume"})[0], 503)
             get.assert_not_called()
+
+    def test_manual_actions_ignore_legacy_switch_external_owner_and_stale_snapshot(self):
+        from dataclasses import replace
+        self.app = create_app(replace(self.settings, controls=False, optimizer_state='/missing/feed.json',
+            locked_settings=('controls_enabled',), defaults={'controls_enabled':False}), False)
+        self.assertTrue(self.app.runtime.public()['values']['controls_enabled'])
+        with patch.object(self.app.observer, 'get_client') as get:
+            for action in ('pause', 'resume', 'prioritize', 'reannounce', 'force_start', 'unforce'):
+                status, result, _ = self.request(f'/api/v1/torrents/{HASH}/actions', 'POST', {'action':action})
+                self.assertEqual(status, 202, result)
+                get.return_value.action.assert_called_with(HASH, action, manual=True)
+        self.assertEqual(len(self.app.store.history()['actions']), 6)
+
+    def test_forced_and_upload_stop_actions_require_observed_confirmation(self):
+        for action, row in [('force_start', {'state':'forcedDL', 'force_start':True}),
+                            ('unforce', {'state':'queuedDL','force_start':False}),
+                            ('pause', {'state':'stoppedUP','progress':1})]:
+            identity = self.app.store.begin_action(HASH, action, 'fixture')
+            self.app.store.finish_action(identity, 'accepted')
+            self.app.store.confirm_actions([{'hash':HASH, **row}])
+            self.assertEqual(next(a for a in self.app.store.history()['actions'] if a['id']==identity)['outcome'], 'confirmed')
 
     def test_sso_binding_does_not_link_email_to_local_admin(self):
         config = self.app.runtime.values() | {"sso_issuer": "https://issuer.example/application/o/swarmtenderr/", "sso_default_role": "viewer"}
@@ -180,7 +202,7 @@ class ProductTests(unittest.TestCase):
         self.assertNotIn("private-tracker", serialized)
         self.assertNotIn("/private/path", serialized)
 
-    def test_locks_override_saved_values_and_empty_secret_input_preserves_sso(self):
+    def test_legacy_locks_do_not_override_ui_and_empty_secret_preserves_sso(self):
         from dataclasses import replace
         from swarmtenderr.runtime import Runtime
         self.app.runtime.save({'timezone': 'America/New_York', 'sso_issuer': 'https://identity.example/application/o/swarm/',
@@ -188,10 +210,10 @@ class ProductTests(unittest.TestCase):
         self.app.runtime.save({'sso_client_secret': '', 'sso_label': 'Sign in with Authentik'}, 1, 'fixture')
         self.assertEqual(self.app.runtime.values()['sso_client_secret'], 'test-client-secret')
         locked = Runtime(replace(self.settings, locked_settings=('timezone',)), self.app.store, self.app.vault)
-        self.assertEqual(locked.values()['timezone'], 'UTC')
-        self.assertEqual(locked.public()['sources']['timezone'], 'deployment')
-        with self.assertRaises(PermissionError):
-            locked.save({'timezone': 'Europe/London'}, 2, 'fixture')
+        self.assertEqual(locked.values()['timezone'], 'America/New_York')
+        self.assertEqual(locked.public()['sources']['timezone'], 'ui')
+        locked.save({'timezone': 'Europe/London'}, 2, 'fixture')
+        self.assertEqual(locked.values()['timezone'], 'Europe/London')
 
     def test_sso_access_policy_changes_revoke_sso_sessions_and_preserve_local_recovery(self):
         config = self.app.runtime.values() | {'sso_issuer': 'https://identity.example/application/o/swarm/'}

@@ -44,9 +44,11 @@ class TuningTests(unittest.TestCase):
                 self.assertEqual(self.app.runtime.public()['revision'],0)
         self.assertEqual(self.save({'swarm_trial_seconds':90,'swarm_warmup_seconds':60,'minimum_rate_sample_seconds':60})[0],200)
 
-    def test_external_owner_locks_standalone_controls_and_requires_observer(self):
+    def test_external_owner_retains_automatic_policy_but_manual_controls_are_enabled(self):
         self.app=create_app(replace(self.settings,optimizer_state='/fixture/feed.json',optimizer_control_socket='/fixture/control.sock'),False)
         self.assertTrue(OPTIMIZER_KEYS <= set(self.app.runtime.public()['locked']))
+        self.assertNotIn('controls_enabled', self.app.runtime.public()['locked'])
+        self.assertTrue(self.app.runtime.values()['controls_enabled'])
         self.assertEqual(self.save({'ranking_interval_seconds':360})[0],403)
         with self.assertRaises(ValueError):create_app(replace(self.settings,optimizer_control_socket='/fixture/control.sock'),False)
 
