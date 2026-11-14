@@ -14,8 +14,8 @@ run "sqlite_default" {
     error_message = "SQLite must be the default."
   }
   assert {
-    condition     = contains(docker_container.app.env, "SWARMTENDERR_CONTROLS=false")
-    error_message = "Controls must be opt-in."
+    condition     = contains(docker_container.app.env, "SWARMTENDERR_CONTROLS=true")
+    error_message = "Manual controls must be available by account role."
   }
 }
 
