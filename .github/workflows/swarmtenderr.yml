@@ -41,7 +41,8 @@ jobs:
         run: |
           node --check components/swarmtenderr/src/swarmtenderr/static/app.js
           node --check components/swarmtenderr/src/swarmtenderr/static/charts.js
-          node --test components/swarmtenderr/tests/test_charts.cjs
+          node --check components/swarmtenderr/src/swarmtenderr/static/durations.js
+          node --test components/swarmtenderr/tests/*.cjs
           python -B components/swarmtenderr/tools/vendor_echarts.py
           pip install openapi-spec-validator==0.9.0
           python -m openapi_spec_validator components/swarmtenderr/config/openapi.json

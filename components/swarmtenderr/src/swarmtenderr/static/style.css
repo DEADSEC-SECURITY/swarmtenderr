@@ -820,6 +820,20 @@ label small {
   min-height: 18px;
   margin-top: auto;
 }
+.duration-control {
+  border: 0;
+  padding: 0;
+  margin: auto 0 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.duration-control > label { min-width: 0; display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.duration-control input { margin: 0; }
+.duration-summary, .duration-range { grid-column: 1 / -1; font-size: 12px; }
+.duration-summary { color: var(--text); }
+.duration-range { color: var(--faint); font-size: 11px; }
 .settings-form .button-row {
   margin-top: 0;
 }
