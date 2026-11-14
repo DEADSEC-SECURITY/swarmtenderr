@@ -13,6 +13,8 @@ captures; the ranking image frames the inspector to keep its text readable.
   and a ranking interval saved as six minutes.
 - [55-second screen tour (MP4)](walkthrough.mp4): edited browser captures with
   burned-in captions, 1920 × 1080, H.264, no audio.
+- [Animated README preview (GIF)](walkthrough.gif): the same 55-second tour at
+  960 × 540, two frames per second, looping.
 - [SubRip captions](walkthrough.srt).
 
 The walkthrough shows an actual UI edit from five to six minutes and a successful

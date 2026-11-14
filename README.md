@@ -5,7 +5,7 @@ torrent to see its optimizer rank, the evidence affecting its score, capacity
 gates, retry cooldowns and observed metadata attempts. Watch transfers and daily
 or monthly completions update live.
 
-[Try the demo](#try-the-demo) · [Watch the tour](docs/media/walkthrough.mp4) ·
+[Try the demo](#try-the-demo) · [Watch the tour](#try-the-demo) ·
 [Why is it queued?](docs/why-a-torrent-is-queued.md) ·
 [Install](#install) · [Unraid beta](docs/unraid.md) ·
 [Share installation feedback](https://github.com/DEADSEC-SECURITY/swarmtenderr/issues/new?template=installation-feedback.yml)
@@ -25,6 +25,8 @@ practical walkthrough of conditions, evidence tiers and metadata discovery.
 ![Torrent inspector showing the base estimate, ranking factors and final weighted cost; synthetic demo data](docs/media/ranking.jpg)
 
 ## Try the demo
+
+![55-second captioned synthetic screen tour: charts, queue rank, score contributions, metadata discovery and saving a duration setting](docs/media/walkthrough.gif)
 
 [Watch or download the 55-second captioned screen tour (MP4)](docs/media/walkthrough.mp4).
 It uses actual browser captures of the synthetic demo: charts, queue positions,
