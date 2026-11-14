@@ -74,8 +74,8 @@ variable "postgres_url_file" {
 
 variable "controls_enabled" {
   type        = bool
-  default     = false
-  description = "Enable manual queue controls. External optimizer mode always disables them."
+  default     = true
+  description = "Deprecated compatibility input. Manual torrent actions are always authorized by account role."
 }
 
 variable "postgres_ca_file" {
@@ -198,7 +198,7 @@ variable "defaults" {
 variable "locked_settings" {
   type        = list(string)
   default     = []
-  description = "Keys owned by deployment; UI updates and resets are denied for these keys."
+  description = "Deprecated compatibility input. Administrators can override defaults in the UI."
   validation {
     condition = alltrue([for key in var.locked_settings : contains([
       "timezone", "poll_seconds", "retention_days", "qbit_url", "qbit_username", "qbit_password", "controls_enabled",

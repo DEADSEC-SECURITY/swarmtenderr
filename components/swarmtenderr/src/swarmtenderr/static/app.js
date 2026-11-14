@@ -1140,24 +1140,28 @@ function renderDetails() {
   }
   let reason = "";
   if (!current) reason = "This torrent is no longer in the client.";
-  else if (row.protected)
-    reason = "Completed, force-started and keep-tagged torrents are protected.";
   else if (state.user.role === "viewer")
     reason = "Your viewer account cannot change torrents.";
-  else if (state.status.stale)
-    reason = "Controls are unavailable while observations are stale.";
   else if (!state.status.snapshot.controls)
     reason = state.status.demo
       ? "Client operations are disabled for demo data."
-      : "Torrent controls are disabled by this installation’s settings.";
+      : "Configure the qBittorrent connection in Settings to use torrent controls.";
   $("control-note").replaceChildren(
     ...(reason ? [icon("lock")] : []),
     reason ||
-      "Actions are recorded before submission. The next observation confirms supported state changes.",
+      "You can control torrents directly. Force start bypasses the normal queue; Return to queue hands control back. Each request checks the client and is recorded in Activity.",
   );
+  const force = $("force-start-action");
+  force.dataset.action = row.force_start ? "unforce" : "force_start";
+  force.textContent = row.force_start ? "Return to queue" : "Force start";
   document
     .querySelectorAll("[data-action]")
-    .forEach((b) => (b.disabled = !!reason));
+    .forEach((b) => {
+      const complete = b.dataset.action === "prioritize" && row.progress >= 1;
+      b.disabled = !!reason || complete;
+      b.title = complete ? "Completed torrents do not have a download queue position" :
+        b.dataset.action === "prioritize" ? "Changes native queue order. Use Force start to bypass automatic scheduling." : "";
+    });
 }
 const iconPaths = {
   check: "M3 8.4l3.1 3.1L13 4.6",
@@ -1481,8 +1485,8 @@ $("history-next").addEventListener("click", () => {
   state.historyPage++;
   loadHistory().catch((e) => toast(e.message));
 });
-const actionTitles = { prioritize: "Move to top", reannounce: "Reannounce", pause: "Pause", resume: "Resume" };
-const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", resume: "play" };
+const actionTitles = { prioritize: "Move to top", reannounce: "Reannounce", pause: "Pause", resume: "Resume", force_start: "Force start", unforce: "Return to queue" };
+const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", resume: "play", force_start: "play", unforce: "refresh" };
 const outcomeNotes = {
   accepted: "Accepted; waiting for the next client observation",
   confirmed: "Confirmed by a client observation",
@@ -1672,12 +1676,6 @@ const settingSections = {
           ["observe", "Observe"],
           ["enforce", "Enforce"],
         ],
-      ],
-      [
-        "controls_enabled",
-        "Manual torrent controls",
-        "checkbox",
-        "Allows administrators and operators to use permitted pause, resume, priority and reannounce actions.",
       ],
       [
         "managed_categories",

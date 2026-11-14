@@ -58,7 +58,7 @@ def projection(rows, engine, *, protected_tags=()):
         decision = explanation or decisions.get(identity, {})
         progress = max(0, min(1, number(row.get("progress"))))
         state = text(row.get("state"), 32)
-        protected = (progress >= 1 or row.get("force_start", False) or state == "forcedDL"
+        protected = (progress >= 1 or row.get("force_start", False) or state in {"forcedDL", "forcedUP"}
                      or has_protected_tag(row, protected_tags))
         speed = max(0, number(row.get("dlspeed")))
         remaining = max(0, number(row.get("amount_left")))
@@ -70,6 +70,7 @@ def projection(rows, engine, *, protected_tags=()):
             "size": max(0, number(row.get("size"))), "seeds": max(0, number(row.get("num_seeds"))),
             "peers": max(0, number(row.get("num_leechs"))), "priority": number(row.get("priority"), -1),
             "eta_seconds": eta, "protected": protected,
+            "force_start": bool(row.get("force_start") or state in {"forcedDL", "forcedUP"}),
             "ranking": explanation,
             "trial_until": number(decision.get("trial_until")), "cooldown_until": number(decision.get("cooldown_until")),
             "estimate_source": text(decision.get("estimate_source"), 60),

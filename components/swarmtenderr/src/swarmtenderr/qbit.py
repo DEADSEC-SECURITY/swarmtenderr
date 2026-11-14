@@ -20,7 +20,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise UpstreamError("Unexpected redirect from qBittorrent")
 
 
-ACTIONS = {"pause": "stop", "resume": "start", "prioritize": "topPrio", "reannounce": "reannounce"}
+ACTIONS = {"pause": "stop", "resume": "start", "prioritize": "topPrio", "reannounce": "reannounce", "force_start": "setForceStart", "unforce": "setForceStart"}
 HASH = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\Z")
 
 
@@ -69,21 +69,27 @@ class Qbit:
             raise UpstreamError("Invalid qBittorrent torrent list")
         return rows
 
-    def action(self, identity, action, *, eligible=None):
-        if not HASH.fullmatch(identity) or action not in ACTIONS:
+    def action(self, identity, action, *, eligible=None, manual=False):
+        if (not HASH.fullmatch(identity) or action not in ACTIONS
+                or (action in {"force_start", "unforce"} and not manual)):
             raise ValueError("Invalid torrent or unsupported action")
         # Refresh directly before every mutation; never trust a browser's cached row.
         rows = self.request("torrents/info?" + urllib.parse.urlencode({"hashes": identity}))
         if not isinstance(rows, list) or len(rows) != 1 or rows[0].get("hash", "").lower() != identity.lower():
             raise ValueError("Torrent no longer exists")
         row = rows[0]
-        if (row.get("progress", 1) >= 1 or row.get("force_start", False)
-                or row.get("state") == "forcedDL"
+        if not manual and (row.get("progress", 1) >= 1 or row.get("force_start", False)
+                or row.get("state") in {"forcedDL", "forcedUP"}
                 or has_protected_tag(row, self.protected_tags)):
             raise ValueError("Completed, force-started and protected torrents cannot be controlled")
         if eligible is not None and not eligible(row):
             raise ValueError("Torrent no longer belongs to the managed category scope")
-        self.request("torrents/" + ACTIONS[action], {"hashes": identity})
+        if manual and action == "prioritize" and row.get("progress", 1) >= 1:
+            raise ValueError("Completed torrents do not have a download queue position")
+        form = {"hashes": identity}
+        if action in {"force_start", "unforce"}:
+            form["value"] = "true" if action == "force_start" else "false"
+        self.request("torrents/" + ACTIONS[action], form)
 
     def system_state(self):
         result = self.request("sync/maindata?rid=0")

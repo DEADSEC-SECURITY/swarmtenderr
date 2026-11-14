@@ -91,6 +91,28 @@ class QbitHttpTests(unittest.TestCase):
                 client.action(HASH, "pause")
         self.assertFalse(any("/torrents/stop" in path for _, path, _ in self.requests))
 
+    def test_explicit_manual_intent_can_control_optimizer_exclusions(self):
+        for progress, tags, force in ((1, "", False), (.5, "swarmtenderr-keep", False), (.5, "", True)):
+            self.progress, self.tags, self.force = progress, tags, force
+            self.client.action(HASH, "pause", manual=True)
+            self.assertEqual(self.requests[-1], ("POST", "/api/v2/torrents/stop", {"hashes": [HASH]}))
+        self.client.action(HASH, "force_start", manual=True)
+        self.assertEqual(self.requests[-1], ("POST", "/api/v2/torrents/setForceStart", {"hashes": [HASH], "value": ["true"]}))
+        self.client.action(HASH, "unforce", manual=True)
+        self.assertEqual(self.requests[-1][-1], {"hashes": [HASH], "value": ["false"]})
+
+    def test_completed_torrent_has_no_download_priority_but_can_be_paused(self):
+        self.progress = 1
+        with self.assertRaisesRegex(ValueError, "download queue position"):
+            self.client.action(HASH, "prioritize", manual=True)
+        self.assertFalse(any(path.endswith('topPrio') for _, path, _ in self.requests))
+        self.client.action(HASH, "pause", manual=True)
+        self.assertTrue(self.requests[-1][1].endswith('/stop'))
+
+    def test_automatic_caller_cannot_force_start(self):
+        with self.assertRaises(ValueError): self.client.action(HASH, "force_start")
+        self.assertEqual(self.requests, [])
+
     def test_arbitrary_or_bulk_operations_are_rejected(self):
         for identity, action in (("all", "pause"), (HASH + "|" + HASH, "pause"), (HASH, "delete")):
             with self.assertRaises(ValueError):

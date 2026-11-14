@@ -17,7 +17,7 @@ from .analytics import Analytics
 from .auth import Auth, AuthError, COOKIE, ROLES
 from .observer import Observer
 from .optimizer_settings import OptimizerSettings
-from .qbit import Qbit, UpstreamError
+from .qbit import ACTIONS, Qbit, UpstreamError
 from .runtime import Runtime
 from .secrets import SecretVault
 from .settings import Settings
@@ -56,7 +56,7 @@ class Application:
         snapshot = self.store.read()
         config = self.runtime.values()
         if snapshot:
-            snapshot["controls"] = config["controls_enabled"] and not self.settings.demo and not self.settings.optimizer_state
+            snapshot["controls"] = not self.settings.demo
         changed_client = not self.settings.demo and self.store.meta("observed_client_origin", config["qbit_url"]) != config["qbit_url"]
         return {"version": __version__, "snapshot": snapshot,
                 "stale": changed_client or not snapshot or time.time() - snapshot["observed_at"] > max(15, config["poll_seconds"] * 3),
@@ -232,15 +232,14 @@ class Application:
         return [data]
 
     def action(self, identity, payload, user):
-        config = self.runtime.values()
-        if not config["controls_enabled"] or self.settings.demo or self.settings.optimizer_state:
-            raise AuthError("Torrent controls are disabled for this installation", 403)
+        if self.settings.demo:
+            raise AuthError("Demo data cannot change a real torrent client", 403)
         action = payload.get("action")
-        if not isinstance(action, str) or action not in {"pause", "resume", "prioritize", "reannounce"} or set(payload) != {"action"}:
+        if not isinstance(action, str) or action not in ACTIONS or set(payload) != {"action"}:
             raise ValueError("Unsupported action")
         audit = self.store.begin_action(identity, action, user["username"])
         try:
-            self.client.action(identity, action)
+            self.client.action(identity, action, manual=True)
         except ValueError as error:
             self.store.finish_action(audit, "rejected")
             return 409, {"error": str(error)}
