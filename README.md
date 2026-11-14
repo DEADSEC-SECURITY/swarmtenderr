@@ -57,7 +57,7 @@ and `SWARMTENDERR_PUBLIC_URL` to the same available port.
 - Always-visible ranking, discovery and capacity settings, with hours/minutes/seconds inputs.
 - Audited pause/resume, move to top, reannounce, force start and return to queue for operators and administrators.
 - Bounded **Fetch metadata now** attempts with cancellation, live results and an editable duration.
-- Local accounts and roles, plus Authentik-compatible OpenID Connect sign-in.
+- Local accounts and roles, plus Authentik-compatible OpenID Connect sign-in with explicit group-to-role mappings.
 - SQLite by default, optional PostgreSQL, Docker images for amd64/arm64 and a reusable Terraform module.
 
 ![Ranking and discovery settings in aligned columns, with hours/minutes/seconds controls and a saved six-minute interval; synthetic demo data](docs/media/settings.jpg)

@@ -12,7 +12,7 @@ NUMBERS = {"poll_seconds": (1, 3600), "retention_days": (1, 365), "metadata_fetc
            "work_budget_gib": (1, 100000), "library_reserve_gib": (1, 100000)}
 NUMBERS.update({key: RULES[key][:2] for key in POLICY_DEFAULTS})
 OPTIMIZER_KEYS = set(POLICY_DEFAULTS) | {"policy_mode", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib", "managed_categories", "excluded_tags"}
-LISTS = {"managed_categories", "excluded_tags", "sso_allowed_groups"}
+LISTS = {"managed_categories", "excluded_tags", "sso_allowed_groups", "sso_admin_groups", "sso_operator_groups"}
 
 
 class Runtime:
@@ -31,6 +31,7 @@ class Runtime:
             **POLICY_DEFAULTS,
             "sso_enabled": False, "sso_issuer": "", "sso_client_id": "",
             "sso_label": "Sign in with SSO", "sso_allowed_groups": [], "sso_default_role": "viewer",
+            "sso_admin_groups": [], "sso_operator_groups": [],
         }
         if set(settings.defaults) - set(self.defaults):
             raise ValueError("Unknown or secret deployment configuration keys")
@@ -144,4 +145,5 @@ class Runtime:
             raise ValueError("Choose managed categories before enabling enforcement")
         encoded = {key: self.vault.encrypt(value) if key in SECRET_KEYS else value
                    for key, value in changes.items() if key not in SECRET_KEYS or value}
-        return self.store.save_config(encoded, reset, revision, actor)
+        from .auth import sso_policy_fingerprint
+        return self.store.save_config(encoded, reset, revision, actor, sso_policy=sso_policy_fingerprint(candidate))

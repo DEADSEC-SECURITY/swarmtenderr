@@ -1810,10 +1810,22 @@ const settingSections = {
         "Comma-separated group names. Empty allows any identity accepted by the provider.",
       ],
       [
+        "sso_admin_groups",
+        "Administrator groups",
+        "list",
+        "Exact group names from the verified ID token. Matching members receive Admin at each sign-in. Admin takes precedence over Operator.",
+      ],
+      [
+        "sso_operator_groups",
+        "Operator groups",
+        "list",
+        "Matching members receive Operator at each sign-in. With either role mapping configured, other permitted users receive the fallback role. Manual role changes are replaced at sign-in.",
+      ],
+      [
         "sso_default_role",
-        "New SSO account role",
+        "Fallback SSO role",
         "select",
-        "Administrators can change the role after the account signs in.",
+        "Used for new accounts and unmatched group-managed accounts. Clearing both role mappings returns previously mapped accounts to this role at their next sign-in.",
         [
           ["viewer", "Viewer"],
           ["operator", "Operator"],

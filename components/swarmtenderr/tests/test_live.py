@@ -59,6 +59,23 @@ class LiveTests(unittest.TestCase):
     def test_role_change_closes_an_established_socket(self):
         self.assert_revoked(lambda: self.service.auth.update_user(self.identity, {'role': 'operator'}, 'fixture'))
 
+    def test_sso_group_demotion_closes_an_established_admin_socket(self):
+        self.service.runtime.save({'sso_issuer':'https://identity.example/application/o/swarm/',
+            'sso_admin_groups':['administrators']}, 0, 'fixture')
+        config = self.service.runtime.values()
+        claims = {'iss':config['sso_issuer'], 'sub':'owner', 'groups':['administrators']}
+        token = self.service.auth.sso_session(claims, config)
+        self.assertEqual(self.service.auth.current(token)['role'], 'admin')
+        self.headers['Cookie'] = 'swarmtenderr_session='+token
+        self.assert_revoked(lambda: self.service.auth.sso_session(claims | {'groups':[]}, config))
+
+    def test_sso_role_mapping_edit_closes_established_sso_socket(self):
+        self.service.runtime.save({'sso_issuer':'https://identity.example/application/o/swarm/'}, 0, 'fixture')
+        config = self.service.runtime.values()
+        token = self.service.auth.sso_session({'iss':config['sso_issuer'], 'sub':'owner'}, config)
+        self.headers['Cookie'] = 'swarmtenderr_session='+token
+        self.assert_revoked(lambda: self.service.runtime.save({'sso_admin_groups':['administrators']}, 1, 'fixture'))
+
     def test_idle_expiry_closes_an_established_socket(self):
         def expire():
             with self.service.store.connection() as connection:

@@ -152,6 +152,8 @@ variable "defaults" {
     sso_client_id               = optional(string, "")
     sso_label                   = optional(string, "Sign in with SSO")
     sso_allowed_groups          = optional(list(string), [])
+    sso_admin_groups            = optional(list(string), [])
+    sso_operator_groups         = optional(list(string), [])
     sso_default_role            = optional(string, "viewer")
   })
   default = {}
@@ -167,8 +169,8 @@ variable "defaults" {
       alltrue([for value in [var.defaults.minimum_free_gib, var.defaults.work_budget_gib, var.defaults.library_reserve_gib] : value >= 1 && value <= 100000 && floor(value) == value]),
       var.defaults.sso_issuer == "" || can(regex("^https://[^/?#@]+/[^?#]*$", "${var.defaults.sso_issuer}/")),
       !var.defaults.sso_enabled || (var.defaults.sso_issuer != "" && var.defaults.sso_client_id != ""),
-      alltrue([for value in concat(var.defaults.managed_categories, var.defaults.excluded_tags, var.defaults.sso_allowed_groups) : length(value) > 0 && length(value) <= 80]),
-      alltrue([for values in [var.defaults.managed_categories, var.defaults.excluded_tags, var.defaults.sso_allowed_groups] : length(values) <= 100]),
+      alltrue([for value in concat(var.defaults.managed_categories, var.defaults.excluded_tags, var.defaults.sso_allowed_groups, var.defaults.sso_admin_groups, var.defaults.sso_operator_groups) : length(value) > 0 && length(value) <= 80]),
+      alltrue([for values in [var.defaults.managed_categories, var.defaults.excluded_tags, var.defaults.sso_allowed_groups, var.defaults.sso_admin_groups, var.defaults.sso_operator_groups] : length(values) <= 100]),
       length(var.defaults.timezone) > 0 && length(var.defaults.timezone) <= 100,
       var.defaults.ranking_interval_seconds >= 30 && var.defaults.ranking_interval_seconds <= 3600 && floor(var.defaults.ranking_interval_seconds) == var.defaults.ranking_interval_seconds,
       var.defaults.probe_seconds >= 300 && var.defaults.probe_seconds <= 7200 && floor(var.defaults.probe_seconds) == var.defaults.probe_seconds,
@@ -206,7 +208,7 @@ variable "locked_settings" {
       "timezone", "poll_seconds", "metadata_fetch_seconds", "retention_days", "qbit_url", "qbit_username", "qbit_password", "controls_enabled",
       "policy_mode", "managed_categories", "excluded_tags", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib",
       "ranking_interval_seconds", "probe_seconds", "retry_seconds", "rate_fresh_seconds", "seed_trial_seconds", "seed_trial_retry_seconds", "min_trial_seeds", "min_proven_speed_kib", "swarm_trial_seconds", "swarm_warmup_seconds", "swarm_min_sample_seconds", "swarm_retry_seconds", "swarm_slow_speed_kib", "metadata_trial_seconds", "metadata_retry_seconds", "minimum_rate_sample_seconds", "trial_improvement_percent", "unknown_size_gib", "other_buffer_gib",
-      "sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_label", "sso_allowed_groups", "sso_default_role"
+      "sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_label", "sso_allowed_groups", "sso_admin_groups", "sso_operator_groups", "sso_default_role"
     ], key)])
     error_message = "The lock list contains an unsupported setting."
   }

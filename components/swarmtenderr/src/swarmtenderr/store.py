@@ -125,7 +125,7 @@ class Store:
                 result += (self.meta("policy_revision", 0, c), self.meta("policy_ack_revision", 0, c))
             return result
 
-    def save_config(self, changes, reset, revision, actor):
+    def save_config(self, changes, reset, revision, actor, *, sso_policy=None):
         with self.connection(serialize=True) as c:
             if self.meta("config_revision", 0, c) != revision:
                 raise Conflict("Settings changed in another session. Reload before saving.")
@@ -133,8 +133,10 @@ class Store:
                 self.execute(c, "INSERT INTO swarmtenderr_configuration VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, json.dumps(value)))
             for key in reset:
                 self.execute(c, "DELETE FROM swarmtenderr_configuration WHERE key=?", (key,))
-            if (set(changes) | set(reset)) & {"sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_allowed_groups"}:
+            if (set(changes) | set(reset)) & {"sso_enabled", "sso_issuer", "sso_client_id", "sso_client_secret", "sso_allowed_groups", "sso_admin_groups", "sso_operator_groups", "sso_default_role"}:
                 self.execute(c, "DELETE FROM swarmtenderr_sessions WHERE user_id IN (SELECT id FROM swarmtenderr_users WHERE issuer <> '')")
+            if sso_policy is not None:
+                self.set_meta(c, "sso_session_policy_v1", sso_policy)
             policy_keys = set(POLICY_DEFAULTS) | {"policy_mode", "managed_categories", "excluded_tags", "download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"}
             if (set(changes) | set(reset)) & policy_keys:
                 self.set_meta(c, "policy_revision", self.meta("policy_revision", 0, c) + 1)
