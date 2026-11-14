@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+from .tuning import has_protected_tag
 
 MAX_RANKINGS = 5000
 MAX_PUBLIC_BYTES = 8 * 1024 * 1024
@@ -42,9 +43,10 @@ def observe_metadata(row, entry, now, running_states):
     return known, record
 
 
-def build(state, rows, owned, plan, now, admission, *, policy):
+def build(state, rows, owned, plan, now, admission, *, policy, protected_tags=()):
     """Explain the exact planner order and score, including overriding gates."""
     history = state.setdefault('history', {})
+    protected_tags = frozenset(protected_tags)
     capacity = state.get('space_plan', {})
     front = plan.get('front', [])
     ready = plan.get('eligible', [])
@@ -68,7 +70,7 @@ def build(state, rows, owned, plan, now, admission, *, policy):
             blockers.append({'code': code, 'label': label, 'detail': text(detail), 'until': until})
         complete = row.get('progress', 1) >= 1
         forced = row.get('force_start') or row.get('state') == 'forcedDL'
-        keep = bool(set(str(row.get('tags', '')).replace(' ', '').split(',')) & {'apollo-keep', 'swarmtenderr-keep'})
+        keep = has_protected_tag(row, protected_tags)
         if complete:
             block('complete', 'Download complete', 'Completed transfers are outside download ranking; uploads are preserved.')
         elif forced or keep:

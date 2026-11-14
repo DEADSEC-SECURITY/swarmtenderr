@@ -7,7 +7,7 @@ image. One installation manages one client and one set of users.
 
 The 0.2 completion work is a release candidate. A candidate passing unit tests is
 not a production release. See the [acceptance contract](docs/acceptance.md) and release evidence before
-selecting a published image. Source lives here; Apollo owns its deployment and consumes pinned releases.
+selecting a published image. Deployments consume pinned releases independently of this repository.
 
 ## Install
 
@@ -181,3 +181,13 @@ behavior, frontend syntax and the API schema before building either architecture
 Duration settings use separate hours, minutes and seconds fields with a readable
 total and allowed range. Existing values, deployment locks and reset behavior
 are preserved. The API and Terraform continue to use whole seconds.
+
+The built-in keep tag is `swarmtenderr-keep`. Configure `excluded_tags` for any
+additional protection tags used by your installation; those tags protect both
+manual controls and automatic scheduling. Existing installations should include
+all of their keep tags explicitly when upgrading.
+
+The application command is `swarmtenderr`; recovery and portable backups use
+`swarmtenderr-maintenance`. Exported policy metrics use the
+`swarmtenderr_optimizer_` prefix. Deployment-specific paths, naming and ownership
+rules belong in the deployment configuration or external controller.

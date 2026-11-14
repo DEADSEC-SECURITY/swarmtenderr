@@ -1564,7 +1564,7 @@ function deploymentPanel() {
     [
       "External controller",
       state.settings.deployment.external_optimizer
-        ? "Apollo optimizer"
+        ? "External optimizer"
         : "None",
     ],
     ["Demo data", state.settings.deployment.demo ? "Enabled" : "Disabled"],

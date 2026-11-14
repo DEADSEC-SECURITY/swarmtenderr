@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swarmtenderr"
-version = "0.4.2"
+version = "0.5.0"
 description = "An explainable, self-hosted qBittorrent dashboard and queue manager"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = ["starlette==1.10.0", "uvicorn==0.54.0", "websockets==17.4", "psycopg[binary]==3.3.9", "Authlib==1.9.5", "httpx==0.28.1", "itsdangerous==2.2.0", "cryptography==50.0.2"]
 
 [project.scripts]
-apollo-swarmtenderr = "swarmtenderr.app:main"
-apollo-swarmtenderr-maintenance = "swarmtenderr.maintenance:main"
+swarmtenderr = "swarmtenderr.app:main"
+swarmtenderr-maintenance = "swarmtenderr.maintenance:main"
 
 [tool.setuptools.package-data]
 swarmtenderr = ["static/*"]

@@ -35,6 +35,9 @@ def ready(url):
 
 def main():
     image = sys.argv[1]
+    assert docker('run', '--rm', '--network', 'none', image, '--version')
+    maintenance_help = docker('run', '--rm', '--network', 'none', '--entrypoint', 'swarmtenderr-maintenance', image, '--help')
+    assert 'backup' in maintenance_help and 'restore' in maintenance_help
     tests = str(Path(__file__).resolve().parent)
     prefix = 'swarmtenderr-test-' + uuid.uuid4().hex[:10]
     postgres_image = 'postgres:18@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4'

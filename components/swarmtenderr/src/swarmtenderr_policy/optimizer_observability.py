@@ -79,7 +79,7 @@ def changes(state, before, after, actions, now, *, policy=DEFAULT_POLICY):
         elif action['action'] == 'Promoted' and current > previous:
             action = {'action':'Moved back','reason':'Yielded to promoted downloads'}
         values = admission.estimate(row, history.get(identity,{}), now, policy=policy)
-        event = {'event':'cinema_optimizer_priority_change','at':now,
+        event = {'event':'swarmtenderr_optimizer_priority_change','at':now,
                  'torrent_id':identity,'torrent':public_text(row.get('name',identity)),
                  'action':action['action'],'reason':action.get('explanation',reason_text(action['reason'],values, policy=policy)),
                  'before':previous,'after':current,'eta_seconds':action.get('eta_seconds',values['eta_seconds']),
@@ -94,7 +94,7 @@ def changes(state, before, after, actions, now, *, policy=DEFAULT_POLICY):
         state['optimizer_applied_front'] = list(state.get('queue_front', []))
 
 
-def snapshot(state, rows, owned, plan, now, *, policy=DEFAULT_POLICY):
+def snapshot(state, rows, owned, plan, now, *, policy=DEFAULT_POLICY, protected_tags=()):
     history = state.get('history', {})
     eligible = {h:r for h,r in rows.items() if r.get('progress',1)<1
                 and (h in owned or r.get('state') == 'forcedDL')}
@@ -164,31 +164,32 @@ def snapshot(state, rows, owned, plan, now, *, policy=DEFAULT_POLICY):
                if h.get(field,0)>now]
     state['optimizer'] = {'checked_at':now,'rows':result,'total_candidates':len(eligible),
                           'next_ranking_at':min([state.get('queue_ranked_at',0)+policy.ranking_interval_seconds,*deadlines])}
-    rankings, total = explanations.build(state, rows, owned, plan, now, admission, policy=policy)
+    rankings, total = explanations.build(state, rows, owned, plan, now, admission, policy=policy,
+                                        protected_tags=protected_tags)
     state['optimizer'].update(rankings=rankings, ranking_total=total)
 
 
 def metrics(state):
     data = state.get('optimizer',{})
-    lines = [f'apollo_cinema_optimizer_observed_timestamp_seconds {data.get("checked_at",0)}',
-             f'apollo_cinema_optimizer_next_ranking_timestamp_seconds {data.get("next_ranking_at",0)}',
-             f'apollo_cinema_optimizer_candidates {data.get("total_candidates",0)}']
-    lines.append(f'apollo_cinema_optimizer_download_slots {state.get("native_download_slots",admission.MAX_DOWNLOADS)}')
+    lines = [f'swarmtenderr_optimizer_observed_timestamp_seconds {data.get("checked_at",0)}',
+             f'swarmtenderr_optimizer_next_ranking_timestamp_seconds {data.get("next_ranking_at",0)}',
+             f'swarmtenderr_optimizer_candidates {data.get("total_candidates",0)}']
+    lines.append(f'swarmtenderr_optimizer_download_slots {state.get("native_download_slots",admission.MAX_DOWNLOADS)}')
     capacity=state.get('space_plan',{})
     for field in ('requested_slots','applied_slots','ssd_budget_bytes','ssd_reserved_bytes',
                   'library_budget_bytes','library_reserved_bytes','external_reserved_bytes',
                   'reserve_bytes','other_buffer_bytes','metadata_trials','limited'):
         value=capacity.get(field,0)
-        lines.append(f'apollo_cinema_optimizer_capacity_{field} {int(value)}')
-    lines.append(f'apollo_cinema_optimizer_capacity_waiting {len(capacity.get("deferred",{}))}')
+        lines.append(f'swarmtenderr_optimizer_capacity_{field} {int(value)}')
+    lines.append(f'swarmtenderr_optimizer_capacity_waiting {len(capacity.get("deferred",{}))}')
     for action,value in sorted(state.get('optimizer_changes',{}).items()):
         label=json.dumps(public_text(action,40))
-        lines.append(f'apollo_cinema_optimizer_priority_changes_total{{action={label}}} {value}')
+        lines.append(f'swarmtenderr_optimizer_priority_changes_total{{action={label}}} {value}')
     for row in data.get('rows',[])[:MAX_TORRENTS]:
         labels=','.join(f'{key}={json.dumps(row[key],ensure_ascii=False)}' for key in (
             'torrent','name','app','state','estimate_source','decision','reason','last_action','last_reason'))
         for field,value in row['values'].items():
             if type(value) not in (float,int) or not math.isfinite(value):
                 continue
-            lines.append(f'apollo_cinema_optimizer_torrent{{{labels},field="{field}"}} {value}')
+            lines.append(f'swarmtenderr_optimizer_torrent{{{labels},field="{field}"}} {value}')
     return lines

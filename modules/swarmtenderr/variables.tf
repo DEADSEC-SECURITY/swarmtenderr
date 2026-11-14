@@ -122,7 +122,7 @@ variable "defaults" {
     retention_days              = optional(number, 30)
     policy_mode                 = optional(string, "observe")
     managed_categories          = optional(list(string), [])
-    excluded_tags               = optional(list(string), ["apollo-keep", "swarmtenderr-keep"])
+    excluded_tags               = optional(list(string), ["swarmtenderr-keep"])
     download_slots              = optional(number, 3)
     minimum_free_gib            = optional(number, 50)
     work_budget_gib             = optional(number, 500)

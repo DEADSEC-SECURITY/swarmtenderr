@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Swarmtenderr API",
-    "version": "0.4.2",
+    "version": "0.5.0",
     "description": "Single-installation administration with cookie sessions, role checks, CSRF, durable completion records and write-only integration secrets. WebSocket /api/v1/live uses the same session cookie and exact Origin, sends snapshot and heartbeat frames, and closes 4401 after revocation."
   },
   "servers": [

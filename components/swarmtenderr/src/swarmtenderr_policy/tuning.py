@@ -76,7 +76,7 @@ RULES = {
     'trial_improvement_percent': (5, 50, 'Required trial improvement (%)', 'A trial must improve the measured completion score by this amount to displace its incumbent.', 'Ranking'),
     'unknown_size_gib': (1, 100000, 'Unknown-size reservation (GiB)', 'Reserve this capacity for a magnet until its real wanted size is known.', 'Capacity'),
     'other_buffer_gib': (1, 100000, 'Additional working buffer (GiB)', 'Capacity kept outside download reservations for other work and bookkeeping.', 'Capacity'),
-    'download_slots': (0, 100, 'Download slots', 'A positive client-wide ceiling. On Apollo, zero follows the existing qBittorrent requested ceiling.', 'Capacity'),
+    'download_slots': (0, 100, 'Download slots', 'A positive client-wide ceiling. Zero follows the existing qBittorrent requested ceiling.', 'Capacity'),
     'minimum_free_gib': (1, 100000, 'Download free-space reserve (GiB)', 'Free download capacity kept outside proactive reservations.', 'Capacity'),
     'work_budget_gib': (1, 100000, 'Download working budget (GiB)', 'Maximum download working data before the guard holds unfinished transfers.', 'Capacity'),
     'library_reserve_gib': (1, 100000, 'Import destination reserve (GiB)', 'Keep this capacity free on the library/import destination.', 'Capacity'),
@@ -88,10 +88,17 @@ RULES = {
 GUARD_DEFAULTS = {**POLICY_DEFAULTS, 'download_slots': 0, 'minimum_free_gib': 50,
                   'work_budget_gib': 500, 'library_reserve_gib': 50, 'pause_free_gib': 25,
                   'resume_free_gib': 50, 'reclaim_at_percent': 85, 'recovery_target_percent': 70}
-# Apollo v3 intentionally retains its commissioned ranking behavior. Metadata
+# Legacy v3 controllers retain their established ranking behavior. Metadata
 # admission and v4's sustained-sample comparison are not advertised as v3 knobs.
 GUARD_KEYS = set(GUARD_DEFAULTS) - {'metadata_trial_seconds', 'metadata_retry_seconds',
                                  'minimum_rate_sample_seconds', 'trial_improvement_percent'}
+
+
+def has_protected_tag(row, extra=()):
+    """Apply product and operator tags without removing spaces inside tag names."""
+    protected = frozenset(extra) | {'swarmtenderr-keep'}
+    actual = {tag.strip() for tag in str(row.get('tags', '')).split(',')}
+    return not protected.isdisjoint(actual)
 
 
 def validate(values, allowed=None, *, relationships=True):

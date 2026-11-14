@@ -15,11 +15,11 @@
   "dependencies": [],
   "entrypoints": [
     {
-      "command": "apollo-swarmtenderr",
+      "command": "swarmtenderr",
       "source": "src/swarmtenderr/app.py"
     },
     {
-      "command": "apollo-swarmtenderr-maintenance",
+      "command": "swarmtenderr-maintenance",
       "source": "src/swarmtenderr/maintenance.py"
     }
   ],
@@ -29,5 +29,5 @@
   "runtime": "Python 3.13, Starlette/Uvicorn WebSocket server, SQLite or PostgreSQL; one process with an independent observer",
   "secret_inputs": "Runtime files for initial admin bootstrap, optional client/provider credentials and PostgreSQL URL; app-owned encrypted UI overrides and a mode-0600 runtime key. No Terraform secret values.",
   "state_contract": "Version 2 SQL schema with transactional migrations, durable completion/session/user/configuration/audit records; encrypted integration credentials use the separate persistent runtime key.",
-  "activation": "Local-first; Apollo image digest is opt-in, with controls disabled when observing its existing controller"
+  "activation": "Deploy independently using a pinned container image; controls are disabled when observing an external controller"
 }

@@ -9,7 +9,7 @@ import time
 import uuid
 
 from swarmtenderr_policy import admission, space_planner, optimizer_observability
-from swarmtenderr_policy.tuning import Policy
+from swarmtenderr_policy.tuning import Policy, has_protected_tag
 
 
 class Controller:
@@ -19,9 +19,8 @@ class Controller:
 
     @staticmethod
     def managed(row, config):
-        tags = {tag.strip() for tag in str(row.get('tags', '')).split(',')}
         return (row.get('category') in config['managed_categories']
-                and not tags.intersection(set(config['excluded_tags']) | {'apollo-keep', 'swarmtenderr-keep'})
+                and not has_protected_tag(row, config['excluded_tags'])
                 and row.get('progress', 1) < 1 and not row.get('force_start')
                 and row.get('state') in admission.ACTIVE_STATES - {'forcedDL'})
 
@@ -65,7 +64,7 @@ class Controller:
         used = sum(max(0, row.get('completed', 0)) for row in raw)
         proposed = admission.queue_plan(rows, owned, history, now,
             trial_budget=config['work_budget_gib'] * 1024**3, max_downloads=config['download_slots'], policy=policy)
-        # Repair observations depend on a separate repair owner in Apollo. A
+        # Repair observations depend on a separately configured repair owner. A
         # standalone scheduler has no authority to create those repair trials.
         repair = proposed.get('metadata_repair')
         if repair:
@@ -159,7 +158,8 @@ class Controller:
                 effective, reason = 'enforcing', 'Enforcing native queue priorities and download capacity'
             if state.get('pending_mutations') and not state.get('mutation_fault'):
                 effective, reason = 'pending', 'Requests accepted; waiting for qBittorrent confirmation'
-        optimizer_observability.snapshot(state, rows, owned, plan, now, policy=policy)
+        optimizer_observability.snapshot(state, rows, owned, plan, now, policy=policy,
+                                         protected_tags=config['excluded_tags'])
         self.store.save_policy(state)
         for item in state['optimizer']['rows']:
             entry = history.get(item['torrent'], {})
