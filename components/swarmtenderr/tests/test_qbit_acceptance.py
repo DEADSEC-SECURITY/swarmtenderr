@@ -4,6 +4,7 @@ Transfers only generated fixture bytes. No production client, torrent, network,
 volume, credential or preference is used. Every resource has a unique test owner.
 """
 import base64
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -111,8 +112,23 @@ def worker():
                 eventually(lambda: next(r for r in native.torrents() if r['hash'] == identity)['state'] == state, 'native stop')
             app.observer.poll()
         for key in (tagged, forced):
-            assert app.action(key, {'action': 'pause'}, user)[0] == 409
-        print('Four native controls and protected-transfer rejection passed', flush=True)
+            try: native.action(key, 'pause')
+            except ValueError: pass
+            else: raise AssertionError('Automatic caller controlled an excluded torrent')
+            assert app.action(key, {'action':'pause'}, user)[0] == 202
+        assert app.action(tagged, {'action':'resume'}, user)[0] == 202
+        assert app.action(forced, {'action':'force_start'}, user)[0] == 202
+        for action, expected in [('force_start',True), ('unforce',False)]:
+            assert app.action(identity, {'action':action}, user)[0] == 202
+            eventually(lambda: next(r for r in native.torrents() if r['hash']==identity)['force_start'] == expected, 'native force state')
+            app.observer.poll()
+            assert next(a for a in app.store.history()['actions'] if a['torrent']==identity and a['action']==action)['outcome']=='confirmed'
+        external = create_app(replace(app.settings, controls=False, optimizer_state=str(path/'missing-feed.json')), False)
+        external.observer.poll()
+        assert external.status()['snapshot']['controls']
+        for action in ('pause','resume'):
+            assert external.action(identity, {'action':action}, user)[0] == 202
+        print('Native manual controls, force/unforce, protected manual intent and external-owner controls passed', flush=True)
         before = native.preferences()
         config = app.runtime.public()
         app.runtime.save({'policy_mode': 'enforce'}, config['revision'], 'acceptance')
@@ -145,7 +161,16 @@ def worker():
             raise
         app.observer.poll()
         assert app.analytics.summary('UTC')['total_completed'] == 1
-        assert app.action(identity, {'action': 'pause'}, user)[0] == 409
+        try: native.action(identity, 'pause')
+        except ValueError: pass
+        else: raise AssertionError('Automatic caller controlled completed data')
+        assert app.action(identity, {'action':'pause'}, user)[0] == 202
+        eventually(lambda: next(r for r in native.torrents() if r['hash']==identity)['state']=='stoppedUP', 'manual seed pause')
+        app.observer.poll()
+        assert next(a for a in app.store.history()['actions'] if a['torrent']==identity and a['action']=='pause')['outcome']=='confirmed'
+        for action, expected in [('force_start',True), ('unforce',False)]:
+            assert app.action(identity, {'action':action}, user)[0] == 202
+            eventually(lambda: next(r for r in native.torrents() if r['hash']==identity)['force_start']==expected, 'manual seed force state')
         print('Real qBittorrent: cookie auth, four native controls, protected transfers, enforce/observe restoration, actual peer transfer and deduplicated completion passed', flush=True)
 
 

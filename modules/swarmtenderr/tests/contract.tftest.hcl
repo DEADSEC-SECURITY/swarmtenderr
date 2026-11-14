@@ -79,8 +79,8 @@ run "oidc_defaults_locks_and_narrow_feed" {
     error_message = "External mode must consume the narrow feed."
   }
   assert {
-    condition     = contains(docker_container.app.env, "SWARMTENDERR_LOCKED_SETTINGS=sso_issuer,sso_client_id")
-    error_message = "Deployment locks must reach the app."
+    condition     = contains(docker_container.app.env, "SWARMTENDERR_LOCKED_SETTINGS=")
+    error_message = "Legacy deployment lock inputs must not block UI edits."
   }
 }
 

@@ -1,4 +1,4 @@
-# Product contracts for 0.2
+# Product contracts for 0.6
 
 Public static assets and login options expose no client data. All data APIs and
 WebSocket streams require a revocable application session. Local passwords are
@@ -21,8 +21,8 @@ GET /api/v1/completions; GET /api/v1/completions.csv; GET /api/v1/activity;
 GET /api/v1/status; POST /api/v1/torrents/{hash}/actions; WS /api/v1/live.
 OIDC login/callback are /auth/oidc/login and /auth/oidc/callback.
 
-Deployment supplies defaults; saved UI configuration overrides unlocked keys.
-An explicit deployment lock list prevents overrides. Updates include a revision;
+Deployment supplies editable defaults; saved UI configuration takes precedence.
+Legacy deployment lock lists no longer prevent administrator edits. Updates include a revision;
 stale writes fail with 409. Secret fields are write-only and encrypted using an
 application-owned key outside the database. Empty secret inputs preserve saved
 values; reset explicitly returns keys to deployment defaults.
@@ -40,7 +40,9 @@ independently of aggregate-rate retention.
 
 Torrent mutations are recorded before submission and expose accepted, confirmed,
 rejected or uncertain outcomes. Unknown upstream results are never retried
-automatically. Demo and external-controller modes cannot mutate real torrents.
+automatically. Explicit manual actions remain available with an external automatic
+controller, including `force_start` and `unforce`. Automatic exclusions do not
+block manual intent. Demo data cannot mutate real torrents. Viewers cannot act.
 
 OIDC uses discovery, authorization code, S256 PKCE, state and nonce validation.
 Identities bind by issuer and subject, never by an email-only match. New SSO

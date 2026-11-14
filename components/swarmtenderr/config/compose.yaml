@@ -1,7 +1,7 @@
 name: swarmtenderr
 services:
   swarmtenderr:
-    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.5.1}
+    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.6.0}
     ports: ["127.0.0.1:8787:8787"]
     environment:
       SWARMTENDERR_PUBLIC_URL: ${SWARMTENDERR_PUBLIC_URL:-http://localhost:8787}

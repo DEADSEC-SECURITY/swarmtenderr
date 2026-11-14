@@ -5,9 +5,9 @@ statistics, local accounts, Authentik-compatible OIDC, and editable settings.
 SQLite is the default; an existing PostgreSQL database is supported by the same
 image. One installation manages one client and one set of users.
 
-The 0.2 completion work is a release candidate. A candidate passing unit tests is
-not a production release. See the [acceptance contract](docs/acceptance.md) and release evidence before
-selecting a published image. Deployments consume pinned releases independently of this repository.
+Release 0.6.0 makes manual torrent actions available to operators and
+administrators independently of automatic optimization. Deployment settings are
+editable defaults; legacy control switches and setting lock lists are deprecated.
 
 ## Install
 
@@ -46,11 +46,11 @@ Compose bind-backed secrets retain host permissions.
 - **Activity:** requested, accepted, confirmed, rejected and uncertain outcomes;
   administrators also see account/configuration audit records.
 - **Settings:** live editable general, client, optimization and SSO configuration.
-  Deployment defaults, UI overrides, locks and resets have explicit ownership.
+  Deployment defaults, UI overrides and resets have explicit ownership.
 - **Users:** administrators create accounts, assign roles, deactivate users and reset
   local passwords. Users change their own password and sign out through the account menu.
 
-Viewers inspect; operators also use enabled torrent controls; administrators manage
+Viewers inspect; operators also use manual torrent controls; administrators manage
 configuration and accounts. One active local administrator is required for recovery.
 Role changes, deactivation and password changes revoke affected sessions and live
 streams. Production never inherits the demo credentials.
@@ -74,14 +74,16 @@ same client in Enforce mode; ownership cannot be coordinated across unrelated da
 If an upstream request has an uncertain result, inspect the native queue and return
 to Observe before explicitly enabling enforcement again. Observe restores only a
 native ceiling whose current value proves this installation still owns it.
-An external observer feed forces observation and disables all client mutations.
+An external observer feed keeps the standalone automatic scheduler in Observe
+mode. Explicit manual actions remain available through the configured client.
 
 ## Configuration and data
 
 Public defaults come from `settings.defaults.json` or `SWARMTENDERR_DEFAULTS_JSON`.
-Saved UI values override unlocked fields. `SWARMTENDERR_LOCKED_SETTINGS` is a comma
-separated list of fields owned by deployment; locked deployment values also take
-precedence over older saved overrides. Integration secrets are write-only and
+Saved UI values override deployment defaults. Administrators can edit and reset
+all settings exposed by the active owner. `SWARMTENDERR_LOCKED_SETTINGS`,
+`SWARMTENDERR_CONTROLS` and `controls_enabled` are compatibility inputs and no
+longer block manual actions or administrator edits. Integration secrets are write-only and
 stored encrypted using `/data/secret.key`, separate from the database.
 
 SQLite lives in `/data/swarmtenderr.sqlite3` on a persistent local volume. PostgreSQL
@@ -157,7 +159,7 @@ thresholds, completion-score improvement, unknown-size reservations and working
 buffers. Changes are persisted, audited and validated together before saving.
 An existing trial keeps its fixed deadline; updated windows govern new trials.
 Deployment defaults are also accepted through the typed Terraform module and
-`SWARMTENDERR_DEFAULTS_JSON`. Explicit deployment locks win over saved UI values.
+`SWARMTENDERR_DEFAULTS_JSON`. Valid saved UI values take precedence.
 The existing force-start, manual-stop, upload and keep-tag protections remain.
 
 An external controller can optionally expose `/v1/settings` over a narrow local
@@ -171,7 +173,8 @@ owner advertises supported fields, performs validation and optimistic writes,
 and acknowledges the applied revision through its observer feed. The UI shows
 saved versus applied state. A disconnected or stale owner is reported explicitly.
 A write with an uncertain result is never retried automatically; reload first.
-Standalone policy is locked when an external owner is configured.
+External-owner tuning is saved through that owner’s settings interface, keeping
+one automatic scheduler in charge. General, client and SSO settings stay editable.
 
 Verify frontend supply-chain integrity without network access using
 `python -B components/swarmtenderr/tools/vendor_echarts.py`; refresh only with
@@ -179,12 +182,11 @@ its explicit `--download` option. CI verifies the asset hashes, chart helper
 behavior, frontend syntax and the API schema before building either architecture.
 
 Duration settings use separate hours, minutes and seconds fields with a readable
-total and allowed range. Existing values, deployment locks and reset behavior
-are preserved. The API and Terraform continue to use whole seconds.
+total and allowed range. Existing values and reset behavior are preserved. The API and Terraform continue to use whole seconds.
 
 The built-in keep tag is `swarmtenderr-keep`. Configure `excluded_tags` for any
-additional protection tags used by your installation; those tags protect both
-manual controls and automatic scheduling. Existing installations should include
+additional protection tags used by your installation; those tags exclude torrents from
+automatic scheduling. Explicit manual actions can still control those torrents. Existing installations should include
 all of their keep tags explicitly when upgrading.
 
 The application command is `swarmtenderr`; recovery and portable backups use
@@ -193,3 +195,17 @@ The application command is `swarmtenderr`; recovery and portable backups use
 rules belong in the deployment configuration or external controller.
 
 Settings uses always-visible Ranking, Discovery, Capacity and Metadata subsections (and Protection when provided by an external controller). Desktop sections share equal-width columns and row boundaries; smaller screens stack them. Numeric storage, speed, percentage and retention units appear beside the input, while durations use hours, minutes and seconds.
+
+## Manual torrent actions
+
+Operators and administrators can pause, resume, move an unfinished download to the
+top, reannounce, force start, and return a forced torrent to the normal queue.
+Force start uses qBittorrent’s native queue bypass; force-started transfers remain
+excluded from automatic scheduling until returned to the queue. Manual actions
+also work on keep-tagged torrents and completed seeders. Completed transfers have
+no download queue position, so Move to top does not apply to them.
+
+Every action checks the current single torrent directly with qBittorrent, records
+intent before submission, and confirms observable outcomes on a later poll.
+Demo data cannot mutate a real client. Viewer roles stay read-only. Unknown
+upstream outcomes are reported without automatic retries.

@@ -12,10 +12,10 @@ unpublished image or an untested server deployment.
 | Overview and daily/monthly chart | `/api/v1/status`, `/statistics`, `/live` | Viewer+ | Exact timezone/DST/category totals, large history and pushed observations |
 | Torrent search/filter/sort/pages | Current bounded snapshot; local filtered pages | Viewer+ | Backend projection/large queue; browser review required |
 | Torrent details/activity | Snapshot, `/api/v1/activity` | Viewer+; administrative audit requires admin | Real action records and protection state |
-| Pause/resume/priority/reannounce | `/api/v1/torrents/{hash}/actions` | Operator+, enabled controls | Real official qBittorrent fixtures, fresh eligibility and bounded single-hash mutations |
+| Pause/resume/priority/reannounce/force/unforce | `/api/v1/torrents/{hash}/actions` | Operator+ | Real official qBittorrent fixtures, fresh eligibility and bounded single-hash mutations |
 | Completion filters/pages/CSV | `/api/v1/completions`, `/completions.csv` | Viewer+ | Persistent ledger, category/date filters, formula escaping and 10,000-record export boundary |
-| General/client/optimizer/SSO save | `PATCH /api/v1/settings` | Admin | Atomic revision checks, validation, locks, encrypted write-only secrets and restart persistence on both databases |
-| Reset section | `/api/v1/settings/reset` | Admin | Explicit deployment defaults, locks and revision conflict tests |
+| General/client/optimizer/SSO save | `PATCH /api/v1/settings` | Admin | Atomic revision checks, validation, editable defaults, encrypted write-only secrets and restart persistence on both databases |
+| Reset section | `/api/v1/settings/reset` | Admin | Explicit deployment defaults and revision conflict tests |
 | Client/discovery test | `/api/v1/settings/test-connection`, `/settings/test-sso` | Admin | Incorrect credentials, discovery/signing issuer and real qBittorrent login |
 | Add/edit/deactivate users | `/api/v1/users`, `/users/{id}` | Admin | Roles, last-local-admin protection, validation and revocation |
 | Admin password reset | `/api/v1/users/{id}/password` | Admin | Password hash, old-session revocation; on-host recovery also tested |

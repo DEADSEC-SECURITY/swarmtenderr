@@ -35,7 +35,7 @@ class Settings:
     app_user: str = "admin"
     app_password: str = field(default="", repr=False)
     public_url: str = "http://localhost:8787"
-    controls: bool = False
+    controls: bool = True
     optimizer_state: str = ""
     optimizer_control_socket: str = ""
     demo: bool = False
@@ -64,7 +64,7 @@ class Settings:
             app_user=os.environ.get("SWARMTENDERR_ADMIN_USERNAME", "admin"),
             app_password=read_secret(os.environ.get("SWARMTENDERR_PASSWORD_FILE", "")),
             public_url=origin(os.environ.get("SWARMTENDERR_PUBLIC_URL", cls.public_url)),
-            controls=os.environ.get("SWARMTENDERR_CONTROLS", "false").lower() == "true",
+            controls=os.environ.get("SWARMTENDERR_CONTROLS", "true").lower() == "true",
             optimizer_state=os.environ.get("SWARMTENDERR_OPTIMIZER_STATE", ""),
             optimizer_control_socket=os.environ.get("SWARMTENDERR_OPTIMIZER_CONTROL_SOCKET", ""), demo=demo,
             poll_seconds=int(os.environ.get("SWARMTENDERR_POLL_SECONDS", "3")),
