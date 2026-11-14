@@ -1,0 +1,55 @@
+1
+00:00:00,000 --> 00:00:05,000
+Swarmtenderr: understand and control your qBittorrent queue.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+2
+00:00:05,000 --> 00:00:09,000
+Daily completions, category totals and transfer history.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+3
+00:00:09,000 --> 00:00:13,000
+Switch to monthly history to compare longer periods.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+4
+00:00:13,000 --> 00:00:18,000
+See optimizer rank beside the current native queue position.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+5
+00:00:18,000 --> 00:00:23,000
+Inspect a torrent to understand the current recommendation.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+6
+00:00:23,000 --> 00:00:29,000
+Read each score contribution. Weighted cost is not a download ETA.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+7
+00:00:29,000 --> 00:00:35,000
+Missing metadata is not scored. Discovery uses a separate trial.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+8
+00:00:35,000 --> 00:00:39,000
+Tune ranking and discovery using hours, minutes and seconds.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+9
+00:00:39,000 --> 00:00:43,000
+Change the ranking interval from five minutes to six.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+10
+00:00:43,000 --> 00:00:49,000
+Save the setting in the UI. The demo cannot change a real client.
+Synthetic demo | v0.7.0 | Captioned tour assembled from actual UI captures
+
+11
+00:00:49,000 --> 00:00:55,000
+Try it with Docker: github.com/DEADSEC-SECURITY/swarmtenderr
+Mostly developed by AI under my supervision. I am a software developer;
+I reviewed everything and tested it on my own system.
