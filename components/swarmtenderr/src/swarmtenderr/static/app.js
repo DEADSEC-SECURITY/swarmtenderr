@@ -661,7 +661,7 @@ function rankingCell(row) {
   const ranking = row.ranking;
   const button = node("button", ranking?.rank ? `#${count(ranking.rank)}` : "—", "rank-button");
   button.dataset.focusKey = "rank:" + row.hash;
-  button.setAttribute("aria-label", "Explain ranking for " + row.name);
+  button.setAttribute("aria-label", (ranking?.rank ? `Optimizer rank ${ranking.rank}. ` : "No optimizer rank. ") + "Explain ranking for " + row.name);
   button.addEventListener("click", () => openDetails(row));
   cell.append(button, node("small", state.status?.snapshot?.optimizer?.stale ? "Stale observation" :
     ranking?.decision || (row.progress >= 1 ? "Complete" : "Not reported")));
@@ -851,8 +851,8 @@ function renderDetails() {
   $("detail-state").replaceChildren(badge(label, kind));
   definitions($("detail-values"), [
     ["Progress", (row.progress * 100).toFixed(1) + "%"],
-    ["Size", bytes(row.size)],
-    ["Remaining", bytes(row.remaining_bytes)],
+    ["Size", row.ranking?.metadata.known === false ? "Unknown until metadata arrives" : bytes(row.size)],
+    ["Remaining", row.ranking?.metadata.known === false ? "Unknown until metadata arrives" : bytes(row.remaining_bytes)],
     [
       "Download / upload",
       bytes(row.download_speed) + "/s / " + bytes(row.upload_speed) + "/s",
@@ -920,7 +920,8 @@ function renderDetails() {
 }
 function renderRanking(row) {
   const target = $("detail-ranking"), ranking = row.ranking;
-  const metadataOpen = target.querySelector(".metadata-history")?.open;
+  const metadataOpen = target.dataset.torrent === row.hash ? target.querySelector(".metadata-history")?.open : undefined;
+  target.dataset.torrent = row.hash;
   target.replaceChildren(node("h3", "Ranking & priority"));
   if (!ranking) {
     target.append(node("p", row.progress >= 1 ? "This download is complete and outside automatic download ranking." :
