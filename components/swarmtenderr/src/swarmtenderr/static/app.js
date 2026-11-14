@@ -1344,6 +1344,7 @@ function settingsForm(key) {
   }
   if (external) form.append(node("p", "", "guard-status"));
   const groups = new Map();
+  const subsections = node("div", null, "settings-subsections");
   if (key === "sso") {
     const uri = node("div", null, "inset");
     uri.append(
@@ -1355,12 +1356,15 @@ function settingsForm(key) {
   for (const field of section.fields) {
     const [name, rawLabel, type, help, options, max] = field,
       duration = type === "number" && name.endsWith("_seconds"),
-      label = duration ? rawLabel.replace(/ \(seconds\)$/, "") : rawLabel,
+      unit = type === "number" ? rawLabel.match(/ \((GiB|KiB\/s|%|days)\)$/)?.[1] : null,
+      label = duration ? rawLabel.replace(/ \(seconds\)$/, "") : unit ? rawLabel.slice(0, -(unit.length + 3)) : rawLabel,
       wrapper = node("div", null, "settings-field"),
       description = node("div"),
       title = node("label", label, "field-title");
     title.htmlFor = "setting-" + name;
-    description.append(title, node("p", help, "field-help"));
+    const helpText = node("p", help, "field-help");
+    helpText.id = "help-" + name;
+    description.append(title, helpText);
     const locked = config.locked.includes(name);
     description.append(
       node(
@@ -1408,22 +1412,39 @@ function settingsForm(key) {
     else if (type === "list")
       input.value = (config.values[name] || []).join(", ");
     else input.value = config.values[name] ?? "";
+    if (!duration) input.setAttribute("aria-describedby", helpText.id);
     input.dataset.type = type;
     input.dataset.original = JSON.stringify(inputValue(input, type));
-    wrapper.append(description, editor?.element || input);
+    let control = editor?.element || input;
+    if (unit) {
+      control = node("div", null, "input-with-unit");
+      const suffix = node("span", unit, "input-unit");
+      suffix.id = "unit-" + name;
+      input.setAttribute("aria-describedby", suffix.id + " " + helpText.id);
+      control.append(input, suffix);
+    }
+    wrapper.append(description, control);
     const group = field[6] || (key === "optimizer" && ["download_slots", "minimum_free_gib", "work_budget_gib", "library_reserve_gib"].includes(name) ? "Capacity" : null);
     if (group) {
       if (!groups.has(group)) {
-        const details = node("details", null, "tuning-group");
-        details.open = ["Capacity", "Protection"].includes(group);
-        details.append(node("summary", group));
+        const subsection = node("section", null, "tuning-group");
+        const heading = node("h3", group);
+        heading.id = "settings-group-" + key + "-" + group.toLowerCase();
+        subsection.setAttribute("aria-labelledby", heading.id);
+        subsection.append(heading);
         const fields = node("div", null, "tuning-fields");
-        details.append(fields);
-        groups.set(group, fields); form.append(details);
+        subsection.append(fields);
+        groups.set(group, fields);
+        subsections.append(subsection);
       }
       groups.get(group).append(wrapper);
     } else form.append(wrapper);
   }
+  // Explicit section order keeps shared row boundaries stable in both layouts.
+  for (const group of ["Ranking", "Discovery", "Capacity", "Protection", "Metadata"]) {
+    if (groups.has(group)) subsections.append(groups.get(group).parentElement);
+  }
+  if (groups.size) form.append(subsections);
   const controls = node("div", null, "button-row"),
     save = node("button", "Save changes", "button primary");
   save.type = "submit";
