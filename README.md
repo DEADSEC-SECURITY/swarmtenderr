@@ -191,3 +191,5 @@ The application command is `swarmtenderr`; recovery and portable backups use
 `swarmtenderr-maintenance`. Exported policy metrics use the
 `swarmtenderr_optimizer_` prefix. Deployment-specific paths, naming and ownership
 rules belong in the deployment configuration or external controller.
+
+Settings uses always-visible Ranking, Discovery, Capacity and Metadata subsections (and Protection when provided by an external controller). Desktop sections share equal-width columns and row boundaries; smaller screens stack them. Numeric storage, speed, percentage and retention units appear beside the input, while durations use hours, minutes and seconds.
