@@ -9,7 +9,7 @@ import time
 import uuid
 
 from swarmtenderr_policy import admission, space_planner, optimizer_observability
-from swarmtenderr_policy.tuning import Policy
+from swarmtenderr_policy.tuning import Policy, has_protected_tag
 
 
 class Controller:
@@ -19,9 +19,8 @@ class Controller:
 
     @staticmethod
     def managed(row, config):
-        tags = {tag.strip() for tag in str(row.get('tags', '')).split(',')}
         return (row.get('category') in config['managed_categories']
-                and not tags.intersection(set(config['excluded_tags']) | {'swarmtenderr-keep'})
+                and not has_protected_tag(row, config['excluded_tags'])
                 and row.get('progress', 1) < 1 and not row.get('force_start')
                 and row.get('state') in admission.ACTIVE_STATES - {'forcedDL'})
 

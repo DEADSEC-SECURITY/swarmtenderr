@@ -84,10 +84,11 @@ class QbitHttpTests(unittest.TestCase):
         self.assertFalse(any("/torrents/stop" in path for _, path, _ in self.requests))
 
     def test_configured_operator_tag_is_rechecked_before_mutation(self):
-        client = Qbit(self.client.url, "admin", self.client.password_file, protected_tags=["operator-keep"])
-        self.tags = "operator-keep"
-        with self.assertRaises(ValueError):
-            client.action(HASH, "pause")
+        for configured, actual in [('operator-keep', 'operator-keep'), ('operator keep', 'spare, operator keep')]:
+            client = Qbit(self.client.url, "admin", self.client.password_file, protected_tags=[configured])
+            self.tags = actual
+            with self.assertRaises(ValueError):
+                client.action(HASH, "pause")
         self.assertFalse(any("/torrents/stop" in path for _, path, _ in self.requests))
 
     def test_arbitrary_or_bulk_operations_are_rejected(self):
@@ -98,10 +99,18 @@ class QbitHttpTests(unittest.TestCase):
 
 
 class ConfiguredProtectionTests(unittest.TestCase):
+    def test_scheduler_ownership_uses_operator_tags(self):
+        from swarmtenderr.controller import Controller
+        config = {'managed_categories': ['media'], 'excluded_tags': ['operator keep']}
+        row = {'category': 'media', 'state': 'queuedDL', 'progress': .5, 'tags': 'spare, operator keep'}
+        self.assertFalse(Controller.managed(row, config))
+        row['tags'] = 'spare'
+        self.assertTrue(Controller.managed(row, config))
+
     def test_projection_uses_operator_configuration(self):
-        rows = [{"hash": HASH, "progress": .5, "state": "queuedDL", "tags": "operator-keep"}]
+        rows = [{"hash": HASH, "progress": .5, "state": "queuedDL", "tags": "spare, operator keep"}]
         self.assertFalse(projection(rows, {})[0]['protected'])
-        self.assertTrue(projection(rows, {}, protected_tags=['operator-keep'])[0]['protected'])
+        self.assertTrue(projection(rows, {}, protected_tags=['operator keep'])[0]['protected'])
 
     def test_changed_tag_configuration_rebuilds_the_mutation_adapter(self):
         config = {'qbit_url': 'http://client:8080', 'qbit_username': 'admin',
@@ -114,7 +123,6 @@ class ConfiguredProtectionTests(unittest.TestCase):
         self.assertIsNot(first, second)
         self.assertNotIn('operator-keep', second.protected_tags)
         self.assertIn('another-keep', second.protected_tags)
-        self.assertIn('swarmtenderr-keep', second.protected_tags)
 
 
 if __name__ == "__main__":

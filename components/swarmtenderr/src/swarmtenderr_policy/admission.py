@@ -1,7 +1,7 @@
 """Rank native qBittorrent queue entries without stopping transfers."""
 from __future__ import annotations
 
-from swarmtenderr_policy.tuning import DEFAULT_POLICY
+from swarmtenderr_policy.tuning import DEFAULT_POLICY, has_protected_tag
 
 import math
 
@@ -219,7 +219,7 @@ def queue_plan(rows: dict, owned: dict, history: dict, now: float, trial_budget:
     candidates = [r for h,r in rows.items() if h in owned and r.get('progress',1) < 1
                   and r.get('state') in ACTIVE_STATES | STOPPED_STATES
                   and r.get('state') != 'forcedDL' and not r.get('force_start',False)
-                  and 'swarmtenderr-keep' not in str(r.get('tags','')).split(',')]
+                  and not has_protected_tag(r)]
     ready = [r for r in candidates if history.get(r['hash'],{}).get('deferred_until',0) <= now
              and not (r.get('amount_left',0)<=0
                       and history.get(r['hash'],{}).get('metadata_retry_at',0)>now)
@@ -349,7 +349,7 @@ def commit_plan(plan: dict, rows: dict, history: dict, now: float, *, policy=DEF
             entry.update(metadata_repair_at=now,metadata_repair_until=now+policy.probe_seconds)
     displaced=[r for h,r in rows.items() if h in plan.get('eligible',[]) and h not in plan['front']
                and r.get('state') in RUNNING_STATES and r.get('state')!='forcedDL'
-               and not r.get('force_start') and 'swarmtenderr-keep' not in str(r.get('tags','')).split(',')
+               and not r.get('force_start') and not has_protected_tag(r)
                and r.get('progress',1)<0.85 and estimate(r,history.get(h,{}),now, policy=policy)['proven']
                and (estimate(r,history.get(h,{}),now, policy=policy)['eta_seconds'] or 0)>600]
     incumbent=max(displaced,key=lambda r:priority(r,history.get(r['hash'],{}),now, policy=policy)) if displaced else None

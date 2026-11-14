@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 import time
 from swarmtenderr_policy.explanations import sanitize
+from swarmtenderr_policy.tuning import has_protected_tag
 
 
 def number(value, default=0):
@@ -47,7 +48,7 @@ def optimizer(path):
 
 
 def projection(rows, engine, *, protected_tags=()):
-    protected_tags = frozenset(protected_tags) | {"swarmtenderr-keep"}
+    protected_tags = frozenset(protected_tags)
     decisions = {row["torrent"]: row for row in engine.get("rows", [])}
     rankings = {row["torrent"]: row for row in sanitize(engine.get("rankings", []))}
     result = []
@@ -57,9 +58,8 @@ def projection(rows, engine, *, protected_tags=()):
         decision = explanation or decisions.get(identity, {})
         progress = max(0, min(1, number(row.get("progress"))))
         state = text(row.get("state"), 32)
-        tags = set(str(row.get("tags", "")).replace(" ", "").split(","))
         protected = (progress >= 1 or row.get("force_start", False) or state == "forcedDL"
-                     or bool(tags & protected_tags))
+                     or has_protected_tag(row, protected_tags))
         speed = max(0, number(row.get("dlspeed")))
         remaining = max(0, number(row.get("amount_left")))
         # Unknown metadata or a queued torrent has no reliable finish time.

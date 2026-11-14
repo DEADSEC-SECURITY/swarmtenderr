@@ -11,7 +11,7 @@ GIB = 1024**3
 class SharedPolicyTests(unittest.TestCase):
     def test_product_keep_tag_is_excluded_from_direct_policy_admission(self):
         rows = {'a': {'hash': 'a', 'state': 'queuedDL', 'progress': .1, 'amount_left': GIB,
-                      'size': GIB, 'priority': 1, 'num_seeds': 10, 'tags': 'swarmtenderr-keep'}}
+                      'size': GIB, 'priority': 1, 'num_seeds': 10, 'tags': 'spare, swarmtenderr-keep'}}
         proposed = admission.queue_plan(rows, rows, {}, 1000)
         self.assertNotIn('a', proposed['eligible'])
         plan = space.plan(rows, rows, {}, 3, proposed, 100*GIB, 0, None, 500*GIB, 1000)

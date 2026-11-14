@@ -1,7 +1,7 @@
 """Reserve finishable batches without crediting speculative imports or deletion."""
 from __future__ import annotations
 
-from swarmtenderr_policy.tuning import DEFAULT_POLICY
+from swarmtenderr_policy.tuning import DEFAULT_POLICY, has_protected_tag
 
 import math
 
@@ -57,7 +57,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     # allocation must be paid before any automatic work can be promised space.
     external=[r for h,r in rows.items() if r.get('progress',1)<1 and r.get('state') in admission.RUNNING_STATES
               and (h not in owned or r.get('force_start') or r.get('state')=='forcedDL'
-                   or 'swarmtenderr-keep' in str(r.get('tags','')).split(','))]
+                   or has_protected_tag(r))]
     external_ssd=sum(requirements(r, policy=policy)['ssd'] for r in external)
     external_library=sum(requirements(r, policy=policy)['library'] for r in external)
     budget=max(0,budget-external_ssd)
@@ -70,7 +70,7 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     eligible={h:r for h,r in rows.items() if h in owned and r.get('progress',1)<1
               and r.get('state') in admission.ACTIVE_STATES|admission.STOPPED_STATES
               and r.get('state')!='forcedDL' and not r.get('force_start')
-              and 'swarmtenderr-keep' not in str(r.get('tags','')).split(',')}
+              and not has_protected_tag(r)}
     ordered=list(dict.fromkeys(proposed['front']+proposed['order']+
         sorted(eligible,key=lambda h:admission.priority(eligible[h],history.get(h,{}),now, policy=policy))))
     selected=[];deferred={};ssd=0;library=0;unknown=0;discovery_unknown=0

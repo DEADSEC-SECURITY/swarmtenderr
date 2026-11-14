@@ -94,6 +94,13 @@ GUARD_KEYS = set(GUARD_DEFAULTS) - {'metadata_trial_seconds', 'metadata_retry_se
                                  'minimum_rate_sample_seconds', 'trial_improvement_percent'}
 
 
+def has_protected_tag(row, extra=()):
+    """Apply product and operator tags without removing spaces inside tag names."""
+    protected = frozenset(extra) | {'swarmtenderr-keep'}
+    actual = {tag.strip() for tag in str(row.get('tags', '')).split(',')}
+    return not protected.isdisjoint(actual)
+
+
 def validate(values, allowed=None, *, relationships=True):
     allowed = set(RULES) if allowed is None else allowed
     if set(values) - allowed:
