@@ -66,8 +66,7 @@ actions are audited and uncertain upstream results are not retried automatically
 
 ## Try this without connecting a client
 
-Run the [synthetic Compose demo](../components/swarmtenderr/config/compose.demo.yaml)
-as described in [the README](../README.md#develop-and-test). Use its queue to open
+Follow [Try the demo](../README.md#try-the-demo). Use the synthetic queue to open
 ranking details and metadata history, inspect chart tooltips and edit a setting.
 The demo cannot mutate a real torrent client. To help improve installation and
 explanations, submit [installation feedback](https://github.com/DEADSEC-SECURITY/swarmtenderr/issues/new?template=installation-feedback.yml).
