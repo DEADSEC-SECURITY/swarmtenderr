@@ -14,14 +14,14 @@ module "swarmtenderr" {
   network_name  = "media"
 
   defaults = {
-    timezone           = "America/New_York"
-    policy_mode        = "observe"
-    managed_categories = ["sonarr", "radarr"]
-    sso_enabled        = true
-    sso_issuer         = "https://identity.example.internal/application/o/swarmtenderr/"
-    sso_client_id      = "PUBLIC_CLIENT_ID"
-    sso_allowed_groups = ["media"]
-    sso_admin_groups   = ["media-administrators"]
+    timezone            = "America/New_York"
+    policy_mode         = "observe"
+    managed_categories  = ["sonarr", "radarr"]
+    sso_enabled         = true
+    sso_issuer          = "https://identity.example.internal/application/o/swarmtenderr/"
+    sso_client_id       = "PUBLIC_CLIENT_ID"
+    sso_allowed_groups  = ["media", "media-administrators", "media-operators"]
+    sso_admin_groups    = ["media-administrators"]
     sso_operator_groups = ["media-operators"]
   }
   oidc_secret_file = "/run/operator-secrets/swarmtenderr-oidc-secret"
