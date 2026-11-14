@@ -9,6 +9,9 @@ const state = {
   view: "overview",
   chartPeriod: "daily",
   activityType: "actions",
+  activityOutcome: "all",
+  torrentFilter: "all",
+  historyCustom: false,
   torrentPage: 1,
   historyPage: 1,
   historyQuery: "",
@@ -181,6 +184,7 @@ $("theme-toggle").addEventListener("click", () => {
   setTheme(theme);
   renderCompletionChart();
   renderTransferChart();
+  renderSparklines();
   try {
     localStorage.setItem("swarmtenderr-theme", theme);
   } catch {}
@@ -204,7 +208,7 @@ function showLogin(reason = "") {
   state.settingsTab = "general";
   document
     .querySelectorAll(
-      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #detail-values, #detail-actions, #account-values",
+      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #queue-bar, #attention, #waiting-rows, #history-totals, #activity-outcomes, #torrent-states, #detail-values, #detail-actions, #detail-stages, #detail-tiles, #detail-ranking, #detail-state, #account-values",
     )
     .forEach((element) => element.replaceChildren());
   document
@@ -215,7 +219,10 @@ function showLogin(reason = "") {
   $("history-uncategorized").checked = false;
   $("history-category").disabled = false;
   $("torrent-category").replaceChildren(new Option("All categories", ""));
-  $("torrent-filter").value = "all";
+  state.torrentFilter = "all";
+  state.activityOutcome = "all";
+  state.historyCustom = false;
+  document.querySelectorAll("#history-table tbody").forEach((n) => n.remove());
   [
     "completed-today",
     "completed-month",
@@ -228,9 +235,12 @@ function showLogin(reason = "") {
     "coverage-note",
     "history-coverage",
     "detail-name",
+    "detail-hash",
+    "detail-note",
+    "detail-percent",
+    "detail-remaining",
     "detail-policy",
     "action-result",
-    "torrent-summary",
     "history-page-label",
     "torrent-page-label",
   ].forEach((id) => ($(id).textContent = ""));
@@ -488,14 +498,20 @@ function render() {
     $("month-note").title = stats.month.partial
       ? "This month's coverage is partial"
       : "This month is a calendar period in progress";
+    $("today-note").textContent += ` · ${bytes(stats.today.bytes)} today`;
+    $("payload-note").textContent =
+      previousMonth.bytes == null
+        ? "Completed wanted data"
+        : `Last month ${bytes(previousMonth.bytes)}`;
+    renderSparklines();
     renderCategories(stats.categories);
     $("coverage-note").textContent = coverageText();
     $("history-coverage").textContent = coverageText();
     renderCompletionChart();
   }
   $("download-speed").textContent = bytes(snapshot?.download_speed) + "/s";
-  $("upload-speed").textContent =
-    "Upload " + bytes(snapshot?.upload_speed) + "/s";
+  $("upload-speed").textContent = bytes(snapshot?.upload_speed) + "/s";
+  renderAttention(rows);
   renderQueueSummary(rows);
   renderTransferChart();
   renderActive(rows);
@@ -535,18 +551,55 @@ function coverageText() {
     return "Completion collection starts with the first successful client observation.";
   return `Collection began ${date(coverage.since, true)}. Older surviving client records are included; previously removed torrents cannot be reconstructed. Timezone: ${zone()}.`;
 }
+function renderSparklines() {
+  const stats = state.statistics;
+  if (!stats) return;
+  dashboardCharts.sparkline($("spark-today"), stats.daily.slice(-14), "daily", "count");
+  dashboardCharts.sparkline($("spark-month"), stats.monthly, "monthly", "count");
+  dashboardCharts.sparkline($("spark-payload"), stats.monthly, "monthly", "bytes");
+}
+const stateLabels = {
+  downloading: "Downloading", metadata: "Metadata", queued: "Queued", stalled: "Stalled",
+  stopped: "Stopped", error: "Error", seeding: "Seeding", complete: "Complete", other: "Other",
+};
+const stateOrder = Object.keys(stateLabels);
+function stateCounts(rows) {
+  const counts = {};
+  for (const row of rows) {
+    const key = classification(row)[2];
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+function percent(row) {
+  return (row.progress * 100).toFixed(1) + "%";
+}
+function refocus(key) {
+  [...document.querySelectorAll("[data-focus-key]")].find((n) => n.dataset.focusKey === key)?.focus({ preventScroll: true });
+}
+function showTorrents(filter) {
+  state.torrentFilter = filter;
+  state.torrentPage = 1;
+  navigate("torrents");
+}
 function renderCategories(categories) {
   $("category-panel").hidden = !categories.length;
-  const fragment = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment(),
+    max = Math.max(1, ...categories.map((category) => category.count));
   for (const category of categories.slice(0, 8)) {
-    const button = node("button", null, "category-row");
+    const button = node("button", null, "category-row"),
+      heading = node("span"),
+      track = node("span", null, "category-bar"),
+      fill = node("span");
     button.type = "button";
     button.dataset.focusKey = "category:" + category.category;
-    button.append(
+    heading.append(
       node("strong", category.category || "Uncategorized"),
-      node("span", count(category.count) + " completed"),
-      node("span", bytes(category.bytes)),
+      node("span", `${count(category.count)} · ${bytes(category.bytes)}`),
     );
+    fill.style.width = (category.count / max) * 100 + "%";
+    track.append(fill);
+    button.append(heading, track);
     button.addEventListener("click", () => {
       $("history-search").value = "";
       $("history-category").value = category.category;
@@ -562,40 +615,67 @@ function renderCategories(categories) {
       );
       state.historyQuery = "&" + query;
       state.historyPage = 1;
+      state.historyCustom = false;
       navigate("history");
     });
     fragment.append(button);
   }
   $("category-breakdown").replaceChildren(fragment);
 }
-function renderQueueSummary(rows) {
-  const values = [
-    ["Total", rows.length, "all"],
-    [
-      "Downloading",
-      rows.filter((r) => classification(r)[2] === "downloading").length,
-      "downloading",
-    ],
-    ["Queued", rows.filter((r) => r.state === "queuedDL").length, "queued"],
-    ["Stalled", rows.filter((r) => r.state === "stalledDL").length, "stalled"],
-    [
-      "Seeding",
-      rows.filter((r) => classification(r)[2] === "seeding").length,
-      "seeding",
-    ],
-  ];
-  $("queue-summary").replaceChildren();
-  for (const [label, value, filter] of values) {
-    const button = node("button");
-    button.dataset.focusKey = "queue:" + filter;
-    button.append(node("strong", count(value)), node("span", label));
-    button.addEventListener("click", () => {
-      $("torrent-filter").value = filter;
-      state.torrentPage = 1;
-      navigate("torrents");
-    });
-    $("queue-summary").append(button);
+function renderAttention(rows) {
+  const notes = {
+    error: () => "Error reported by the client",
+    stalled: (row) => `Stalled at ${percent(row)} · no data arriving`,
+    metadata: () => "Waiting on metadata · size unknown",
+  };
+  const order = Object.keys(notes),
+    items = rows
+      .filter((row) => row.progress < 1 && notes[classification(row)[2]])
+      .sort((a, b) => order.indexOf(classification(a)[2]) - order.indexOf(classification(b)[2])),
+    target = $("attention");
+  target.hidden = !items.length;
+  target.replaceChildren();
+  if (!items.length) return;
+  const heading = node("div", null, "attention-heading");
+  heading.append(icon("alert"), node("strong", `${count(items.length)} need${items.length === 1 ? "s" : ""} attention`));
+  target.append(heading);
+  for (const row of items.slice(0, 3)) {
+    const button = node("button"), text = node("span");
+    button.type = "button";
+    button.dataset.focusKey = "attention:" + row.hash;
+    text.append(node("strong", row.name), node("span", notes[classification(row)[2]](row)));
+    button.append(text, icon("chevron"));
+    button.addEventListener("click", () => openDetails(row));
+    target.append(button);
   }
+  if (items.length > 3) {
+    const more = node("button", `View all ${count(items.length)}`, "attention-more");
+    more.type = "button";
+    more.dataset.focusKey = "attention:more";
+    more.addEventListener("click", () => showTorrents("all"));
+    target.append(more);
+  }
+}
+function renderQueueSummary(rows) {
+  const counts = stateCounts(rows), bar = $("queue-bar"), legend = $("queue-summary"), parts = [];
+  $("queue-total").textContent = `${count(rows.length)} torrent${rows.length === 1 ? "" : "s"}`;
+  bar.replaceChildren();
+  legend.replaceChildren();
+  for (const key of stateOrder) {
+    const value = counts[key];
+    if (!value) continue;
+    const segment = node("span", null, "state-" + key);
+    segment.style.flexGrow = value;
+    bar.append(segment);
+    parts.push(`${value} ${stateLabels[key].toLowerCase()}`);
+    const button = node("button");
+    button.type = "button";
+    button.dataset.focusKey = "queue:" + key;
+    button.append(node("span", null, "state-swatch state-" + key), node("span", stateLabels[key]), node("strong", count(value)));
+    button.addEventListener("click", () => showTorrents(key));
+    legend.append(button);
+  }
+  bar.setAttribute("aria-label", parts.join(", ") || "No torrents");
 }
 const dashboardCharts = SwarmCharts.create({
   bytes, date, zone,
@@ -608,6 +688,7 @@ const dashboardCharts = SwarmCharts.create({
     $("history-category").disabled = false;
     $("history-uncategorized").checked = false;
     state.historyPage = 1;
+    state.historyCustom = false;
     state.historyQuery = "&" + new URLSearchParams(bounds);
     navigate("history");
   },
@@ -636,19 +717,25 @@ function nameCell(row) {
   );
   return td;
 }
-function progressCell(row) {
-  const td = node("td", null, "progress-cell");
-  td.append(node("span", (row.progress * 100).toFixed(1) + "%"));
-  const progress = node("progress");
+function progressBar(row) {
+  const progress = node("progress", null, "state-" + classification(row)[2]);
   progress.max = 1;
   progress.value = row.progress;
   progress.setAttribute("aria-label", row.name + " progress");
-  td.append(progress);
+  return progress;
+}
+function progressCell(row) {
+  const td = node("td", null, "progress-cell"),
+    unknown = row.progress < 1 && (row.ranking ? row.ranking.metadata.known === false : row.state === "metaDL");
+  const wrap = node("div");
+  wrap.append(progressBar(row), node("span", unknown ? "Size unknown" : percent(row), unknown ? "muted" : ""));
+  td.append(wrap);
   return td;
 }
 function detailsCell(row) {
   const td = node("td"),
-    button = node("button", "›", "icon-button");
+    button = node("button", null, "icon-button");
+  button.append(icon("chevron"));
   button.dataset.torrent = row.hash;
   button.dataset.focusKey = "torrent:" + row.hash;
   button.setAttribute("aria-label", "Details for " + row.name);
@@ -668,25 +755,56 @@ function rankingCell(row) {
   return cell;
 }
 function renderActive(rows) {
-  const active = rows
-      .filter((r) => r.progress < 1 && r.download_speed > 0)
-      .sort((a, b) => b.download_speed - a.download_speed)
-      .slice(0, 8),
-    fragment = document.createDocumentFragment();
-  for (const row of active) {
-    const tr = node("tr");
-    tr.append(
-      nameCell(row),
-      progressCell(row),
-      node("td", bytes(row.download_speed) + "/s"),
-      node("td", bytes(row.remaining_bytes)),
-      node("td", eta(row.eta_seconds)),
-      detailsCell(row),
-    );
-    fragment.append(tr);
+  const incomplete = rows.filter((r) => r.progress < 1),
+    active = incomplete
+      .filter((r) => r.download_speed > 0)
+      .sort((a, b) => b.download_speed - a.download_speed),
+    waiting = incomplete
+      .filter((r) => !(r.download_speed > 0))
+      .sort((a, b) => (a.ranking?.rank ?? 1e9) - (b.ranking?.rank ?? 1e9) || a.priority - b.priority || a.name.localeCompare(b.name)),
+    fragment = document.createDocumentFragment(),
+    rank = (row) => (row.ranking?.rank ? `rank #${count(row.ranking.rank)}` : "");
+  $("active-summary").textContent = active.length
+    ? `${count(active.length)} receiving data`
+    : "Transfers currently receiving data";
+  for (const row of active.slice(0, 8)) {
+    const button = node("button", null, "active-row"),
+      top = node("span", null, "active-row-top"),
+      name = node("span"),
+      bar = node("span", null, "active-row-bar");
+    button.type = "button";
+    button.dataset.focusKey = "torrent:" + row.hash;
+    button.setAttribute("aria-label", "Details for " + row.name);
+    name.append(node("strong", row.name), node("small", [row.category || "Uncategorized", rank(row)].filter(Boolean).join(" · ")));
+    top.append(name, node("span", `${bytes(row.remaining_bytes)} left · ${eta(row.eta_seconds)}`));
+    bar.append(progressBar(row), node("strong", percent(row)), node("span", bytes(row.download_speed) + "/s", "speed-down"));
+    button.append(top, bar);
+    button.addEventListener("click", () => openDetails(row));
+    fragment.append(button);
   }
   $("active-rows").replaceChildren(fragment);
   $("active-empty").hidden = !!active.length;
+  $("waiting-block").hidden = !waiting.length;
+  $("waiting-rows").replaceChildren();
+  for (const row of waiting.slice(0, 5)) {
+    const button = node("button", null, "waiting-row"),
+      name = node("span"),
+      [label, kind] = classification(row);
+    button.type = "button";
+    button.dataset.focusKey = "waiting:" + row.hash;
+    button.setAttribute("aria-label", "Details for " + row.name);
+    name.append(node("strong", row.name), node("small", [rank(row), row.progress > 0 ? percent(row) : ""].filter(Boolean).join(" · ")));
+    button.append(name, badge(label, kind));
+    button.addEventListener("click", () => openDetails(row));
+    $("waiting-rows").append(button);
+  }
+  if (waiting.length > 5) {
+    const more = node("button", `View ${count(waiting.length - 5)} more`, "text-button");
+    more.type = "button";
+    more.dataset.focusKey = "waiting:more";
+    more.addEventListener("click", () => showTorrents("all"));
+    $("waiting-rows").append(more);
+  }
 }
 function renderTorrents(rows) {
   const category = $("torrent-category").value,
@@ -705,8 +823,27 @@ function renderTorrents(rows) {
     $("torrent-category").replaceChildren(...options);
     $("torrent-category").value = category;
   }
+  const counts = stateCounts(rows), pills = $("torrent-states");
+  if (state.torrentFilter !== "all" && !stateLabels[state.torrentFilter]) state.torrentFilter = "all";
+  pills.replaceChildren();
+  for (const key of ["all", ...stateOrder]) {
+    const value = key === "all" ? rows.length : counts[key] || 0;
+    if (!value && key !== "all" && key !== state.torrentFilter) continue;
+    const button = node("button", key === "all" ? "All" : stateLabels[key]);
+    button.type = "button";
+    button.dataset.focusKey = "state:" + key;
+    button.setAttribute("aria-pressed", String(key === state.torrentFilter));
+    button.append(node("span", count(value)));
+    button.addEventListener("click", () => {
+      state.torrentFilter = key;
+      state.torrentPage = 1;
+      renderTorrents(state.status?.snapshot?.torrents || []);
+      refocus("state:" + key);
+    });
+    pills.append(button);
+  }
   const search = $("torrent-search").value.trim().toLowerCase(),
-    filter = $("torrent-filter").value;
+    filter = state.torrentFilter;
   let filtered = rows.filter(
     (r) =>
       (!search || r.name.toLowerCase().includes(search)) &&
@@ -739,24 +876,24 @@ function renderTorrents(rows) {
       status = node("td"),
       [label, kind] = classification(row);
     status.append(badge(label, kind));
+    const speed = node("td", null, "numeric speed-cell");
+    if (row.download_speed) speed.append(node("span", "↓ " + bytes(row.download_speed) + "/s", "speed-down"));
+    if (row.upload_speed) speed.append(node("span", "↑ " + bytes(row.upload_speed) + "/s", "speed-up"));
+    if (!speed.childNodes.length) speed.textContent = "—";
     tr.append(
+      rankingCell(row),
       nameCell(row),
       status,
       progressCell(row),
-      node("td", row.download_speed ? bytes(row.download_speed) + "/s" : "—"),
-      node("td", row.upload_speed ? bytes(row.upload_speed) + "/s" : "—"),
-      node("td", row.progress >= 1 ? "Complete" : eta(row.eta_seconds)),
-      node("td", `${row.seeds} / ${row.peers}`),
-      node("td", row.priority < 0 ? "—" : row.priority),
-      rankingCell(row),
+      speed,
+      node("td", row.progress >= 1 ? "Complete" : eta(row.eta_seconds), "numeric"),
+      node("td", `${row.seeds} / ${row.peers}`, "numeric"),
+      node("td", row.priority < 0 ? "—" : row.priority, "numeric"),
       detailsCell(row),
     );
     fragment.append(tr);
   }
   $("torrent-rows").replaceChildren(fragment);
-  $("table-count").textContent = count(rows.length);
-  $("torrent-summary").textContent =
-    `${count(filtered.length)} matching torrents`;
   $("torrent-empty").hidden = !!filtered.length;
   $("torrent-page-label").textContent =
     `Page ${state.torrentPage} of ${Math.ceil(filtered.length / 50) || 1} · ${count(filtered.length)} torrents`;
@@ -766,7 +903,6 @@ function renderTorrents(rows) {
 for (const id of [
   "torrent-search",
   "torrent-category",
-  "torrent-filter",
   "torrent-sort",
 ])
   $(id).addEventListener(id === "torrent-search" ? "input" : "change", () => {
@@ -812,32 +948,48 @@ function renderOptimizer(engine) {
   if (!engine.connected) return;
   const capacity = engine.capacity || {};
   $("optimizer-capacity").replaceChildren();
-  for (const [label, value] of [
-    [
-      "Download slots",
-      `${capacity.native_slots ?? "—"} native · ${capacity.applied_slots ?? "—"} recommended / ${capacity.requested_slots ?? "—"} requested`,
-    ],
-    [
-      "Download reservation",
-      `${bytes(capacity.ssd_reserved_bytes)} / ${bytes(capacity.ssd_budget_bytes)}`,
-    ],
-    [
+  const meter = (label, text, used, total) => {
+    const item = node("div"), heading = node("div");
+    heading.append(node("span", label), node("small", text));
+    item.append(heading);
+    if (total > 0) {
+      const bar = node("progress");
+      bar.max = total;
+      bar.value = Math.min(used || 0, total);
+      bar.setAttribute("aria-label", label);
+      item.append(bar);
+    }
+    $("optimizer-capacity").append(item);
+  };
+  meter(
+    "Download slots",
+    `${capacity.applied_slots ?? "—"} recommended of ${capacity.requested_slots ?? "—"} requested · ${capacity.native_slots ?? "—"} native`,
+    capacity.applied_slots,
+    capacity.requested_slots,
+  );
+  meter(
+    "Download reservation",
+    `${bytes(capacity.ssd_reserved_bytes)} of ${bytes(capacity.ssd_budget_bytes)}`,
+    capacity.ssd_reserved_bytes,
+    capacity.ssd_budget_bytes,
+  );
+  if (capacity.library_capacity_applicable === false)
+    meter("Import reservation", "No separate import destination", 0, 0);
+  else
+    meter(
       "Import reservation",
-      capacity.library_capacity_applicable === false
-        ? "No separate import destination"
-        : `${bytes(capacity.library_reserved_bytes)} / ${bytes(capacity.library_budget_bytes)}`,
-    ],
-  ]) {
-    const n = node("div");
-    n.append(node("small", label), node("strong", value));
-    $("optimizer-capacity").append(n);
-  }
+      `${bytes(capacity.library_reserved_bytes)} of ${bytes(capacity.library_budget_bytes)}`,
+      capacity.library_reserved_bytes,
+      capacity.library_budget_bytes,
+    );
 }
 function openDetails(row) {
   state.selectedTorrent = row;
   $("action-result").textContent = "";
   renderDetails();
   $("details-dialog").showModal();
+  $("details-dialog").scrollTop = 0;
+  $("details-dialog").querySelector(".detail-body").scrollTop = 0;
 }
 function renderDetails() {
   if (!state.selectedTorrent) return;
@@ -846,23 +998,109 @@ function renderDetails() {
     ),
     row = current || state.selectedTorrent;
   state.selectedTorrent = row;
-  $("detail-name").textContent = row.name;
-  const [label, kind] = classification(row);
+  const [label, kind] = classification(row),
+    complete = row.progress >= 1,
+    unknown =
+      !complete &&
+      (row.ranking ? row.ranking.metadata.known === false : row.state === "metaDL"),
+    nameless = !row.name || row.name === row.hash;
+  $("detail-name").textContent = nameless ? row.hash : row.name;
+  $("detail-name").classList.toggle("mono", nameless);
+  $("detail-hash").textContent = row.hash;
+  $("detail-hash").hidden = nameless;
+  $("detail-copy").hidden = !navigator.clipboard;
+  $("detail-copy").textContent = "Copy hash";
   $("detail-state").replaceChildren(badge(label, kind));
+  $("detail-note").hidden = !unknown;
+  $("detail-note").textContent = unknown
+    ? "Metadata has not arrived yet. " +
+      (nameless ? "Only the info hash is known; name, size" : "Size") +
+      " and remaining work appear once a peer supplies it."
+    : "";
+  const stage = complete ? 3 : unknown ? 1 : 2,
+    stages = $("detail-stages");
+  stages.replaceChildren();
+  ["Added to queue", "Metadata", "Download", "Complete"].forEach((text, i) => {
+    const done = complete || i < stage,
+      item = node(
+        "li",
+        null,
+        done ? "done" : i === stage ? "current " + (unknown ? "warning" : kind) : "",
+      ),
+      dot = node("span", null, "stage-dot");
+    if (done) dot.append(icon("check"));
+    item.append(dot, node("strong", text));
+    if (i === stage) {
+      item.setAttribute("aria-current", "step");
+      item.append(
+        node(
+          "small",
+          unknown
+            ? row.state === "metaDL"
+              ? "Fetching now"
+              : "Not acquired yet"
+            : label,
+        ),
+      );
+    }
+    stages.append(item);
+  });
+  $("detail-percent").textContent = (row.progress * 100).toFixed(1) + "%";
+  $("detail-progress").value = row.progress;
+  $("detail-remaining").textContent = complete
+    ? `${bytes(row.size)} · Complete`
+    : unknown
+      ? "Size, remaining and ETA unknown until metadata arrives"
+      : `${bytes(row.remaining_bytes)} left of ${bytes(row.size)} · ETA ${eta(row.eta_seconds)}`;
+  const ranking = row.ranking,
+    tiles = $("detail-tiles"),
+    tile = (title, value, sub) => {
+      const item = node("div", null, "detail-tile"),
+        figure = node("div", null, "tile-value");
+      figure.append(...[].concat(value));
+      item.append(node("span", title, "detail-label"), figure);
+      if (sub) item.append(...[].concat(sub).map((n) => (typeof n === "string" ? node("small", n) : n)));
+      tiles.append(item);
+    };
+  tiles.replaceChildren();
+  if (ranking?.rank) {
+    const track = node("div", null, "rank-track"),
+      marker = node("span");
+    marker.style.left =
+      (ranking.candidate_count > 1
+        ? ((ranking.rank - 1) / (ranking.candidate_count - 1)) * 100
+        : 0) + "%";
+    track.append(marker);
+    tile(
+      "Plan rank",
+      [node("strong", "#" + count(ranking.rank), "accent"), node("span", "of " + count(ranking.candidate_count))],
+      [track, ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
+    );
+  } else
+    tile(
+      "Plan rank",
+      node("strong", "—"),
+      ranking ? "Outside the eligible plan" : complete ? "Complete" : "Not reported",
+    );
+  tile(
+    "Queue position",
+    node("strong", row.priority < 0 ? "—" : count(row.priority)),
+    row.priority < 0 ? "Outside download queue" : "Native client queue",
+  );
+  tile(
+    "Seeds / peers",
+    node("strong", `${count(row.seeds)} / ${count(row.peers)}`),
+    ranking
+      ? `Connected · ${count(ranking.signals.seeders)} / ${count(ranking.signals.known_peers)} reported`
+      : "Connected",
+  );
+  const speed = (name, text, value) => {
+    const line = node("div", null, "tile-speed");
+    line.append(icon(name), node("strong", bytes(value) + "/s"), node("span", text, "visually-hidden"));
+    return line;
+  };
+  tile("Transfer", [speed("down", "download", row.download_speed), speed("up", "upload", row.upload_speed)]);
   definitions($("detail-values"), [
-    ["Progress", (row.progress * 100).toFixed(1) + "%"],
-    ["Size", row.ranking?.metadata.known === false ? "Unknown until metadata arrives" : bytes(row.size)],
-    ["Remaining", row.ranking?.metadata.known === false ? "Unknown until metadata arrives" : bytes(row.remaining_bytes)],
-    [
-      "Download / upload",
-      bytes(row.download_speed) + "/s / " + bytes(row.upload_speed) + "/s",
-    ],
-    ["Seeds / peers", `${row.seeds} / ${row.peers}`],
-    [
-      "Queue position",
-      row.priority < 0 ? "Outside download queue" : row.priority,
-    ],
-    ["ETA", row.progress >= 1 ? "Complete" : eta(row.eta_seconds)],
     ...(row.trial_until > Date.now() / 1000
       ? [["Trial ends", date(row.trial_until, true)]]
       : []),
@@ -870,6 +1108,7 @@ function renderDetails() {
       ? [["Retry after", date(row.cooldown_until, true)]]
       : []),
   ]);
+  $("detail-values").hidden = !$("detail-values").children.length;
   const policy = state.status?.snapshot?.optimizer?.connected;
   $("detail-policy").hidden = !policy || !!row.ranking;
   $("detail-policy").textContent = policy
@@ -907,9 +1146,11 @@ function renderDetails() {
     reason = state.status.demo
       ? "Client operations are disabled for demo data."
       : "Configure the qBittorrent connection in Settings to use torrent controls.";
-  $("control-note").textContent =
+  $("control-note").replaceChildren(
+    ...(reason ? [icon("lock")] : []),
     reason ||
-    "You can control torrents directly. Force start bypasses the normal queue; Return to queue hands control back. Each request checks the client and is recorded in Activity.";
+      "You can control torrents directly. Force start bypasses the normal queue; Return to queue hands control back. Each request checks the client and is recorded in Activity.",
+  );
   const force = $("force-start-action");
   force.dataset.action = row.force_start ? "unforce" : "force_start";
   force.textContent = row.force_start ? "Return to queue" : "Force start";
@@ -921,6 +1162,63 @@ function renderDetails() {
       b.title = complete ? "Completed torrents do not have a download queue position" :
         b.dataset.action === "prioritize" ? "Changes native queue order. Use Force start to bypass automatic scheduling." : "";
     });
+}
+const iconPaths = {
+  check: "M3 8.4l3.1 3.1L13 4.6",
+  minus: "M4 8h8",
+  clock: "M8 4.6v3.7l2.3 1.5",
+  alert: "M8 4v4.6M8 11.6v.2",
+  down: "M8 2.5v10M4 8.8l4 4 4-4",
+  up: "M8 13.5v-10M4 7.2l4-4 4 4",
+  lock: "M4 7.5h8v6H4zM5.8 7.5V5.4a2.2 2.2 0 0 1 4.4 0v2.1",
+  chevron: "M6 3.5L10.5 8 6 12.5",
+  top: "M8 13.5V6M4.5 9L8 5.5 11.5 9M4 2.5h8",
+  refresh: "M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3",
+  pause: "M6 4v8M10 4v8",
+  play: "M5.5 3.5l6 4.5-6 4.5z",
+  edit: "M3 13l1-3.5L10.5 3l2.5 2.5L6.5 12z",
+};
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"),
+    path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "icon");
+  path.setAttribute("d", iconPaths[name]);
+  svg.append(path);
+  return svg;
+}
+const blockerTones = {
+  metadata: "warning", hold: "warning", capacity: "warning", metadata_slot: "warning", complete: "good",
+  probe_cooldown: "info", metadata_cooldown: "info", swarm_cooldown: "info", ranking_cooldown: "info",
+};
+const metadataOutcomes = {
+  metadata: "Metadata acquired",
+  no_metadata: "Window ended without metadata",
+  unobserved: "Insufficient continuous observation",
+};
+function metadataTimeline(ranking) {
+  const metadata = ranking.metadata, now = Date.now() / 1000, events = [];
+  const add = (at, text) => { if (at > 0) events.push({ at, text }); };
+  add(metadata.tracking_since, "Tracking began");
+  add(metadata.last_at, metadataOutcomes[metadata.last_outcome] || "Attempt ended");
+  add(metadata.last_probe_at, "Last probe began");
+  if (metadata.trial_until > now) add(metadata.trial_until, "Trial ends");
+  if (metadata.retry_at > now) add(metadata.retry_at, "Metadata retry");
+  for (const blocker of ranking.blockers)
+    if (blocker.until > now && blocker.code !== "metadata_cooldown")
+      add(blocker.until, blocker.code === "ranking_cooldown" ? "Reshuffle eligible" : blocker.label + " ends");
+  events.push({ at: now, now: true, text: metadata.active
+    ? `Observing · ${count(Math.round(metadata.active_seconds))} seconds so far` : "Not observing" });
+  events.sort((a, b) => a.at - b.at);
+  const list = node("ol", null, "metadata-timeline");
+  for (const event of events) {
+    const item = node("li", null, event.now ? "now" + (metadata.active ? " active" : "") : event.at < now ? "past" : "future");
+    item.append(node("span", null, "timeline-dot"), node("time", event.now ? "Now" : date(event.at)), node("span", event.text));
+    if (event.now) item.setAttribute("aria-current", "time");
+    list.append(item);
+  }
+  return list;
 }
 function renderRanking(row) {
   const target = $("detail-ranking"), ranking = row.ranking;
@@ -939,26 +1237,38 @@ function renderRanking(row) {
   target.append(node("p", note, "muted"));
   if (engine?.stale || Date.now() / 1000 - ranking.observed_at > 120)
     target.append(node("p", "Stale observation. These are the last recorded reasons; waiting for the guard to report again.", "ranking-warning"));
-  const summary = node("dl", null, "definition-grid");
-  definitions(summary, [
-    ["Plan rank", ranking.rank ? `#${count(ranking.rank)} of ${count(ranking.candidate_count)}` : "Outside the eligible plan"],
-    ["Completion rank", ranking.score_rank ? `#${count(ranking.score_rank)} before trial reservations` : "Not scored"],
-    ["Selection", ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
-    ["Policy", ranking.policy], ["Evaluated", date(ranking.observed_at, true)],
-  ]);
-  target.append(summary);
-  if (ranking.selection_reason) target.append(node("p", ranking.selection_reason, "ranking-selection"));
-  target.append(node("h4", ranking.selected_rank ? "Selection conditions" : row.state === "queuedDL" ? "Why it is queued" : "Priority conditions"));
+  const grid = node("div", null, "ranking-grid"), conditions = node("div"), plan = node("aside", null, "ranking-plan");
+  conditions.append(node("h4", ranking.selected_rank ? "Selection conditions" : row.state === "queuedDL" ? "Why it is queued" : "Priority conditions"));
   const reasons = node("ul", null, "ranking-reasons");
-  for (const blocker of ranking.blockers) {
-    const item = node("li");
-    item.append(node("strong", blocker.label), node("p", blocker.detail));
-    if (blocker.until > Date.now() / 1000) item.append(node("small", "Eligible after " + date(blocker.until, true)));
+  const reason = (label, detail, tone = "", tag = "") => {
+    const item = node("li", null, tone), mark = node("span", null, "reason-mark"), body = node("div"), heading = node("div", null, "reason-heading");
+    mark.append(icon({ warning: "alert", good: "check", info: "clock" }[tone] || "minus"));
+    heading.append(node("strong", label));
+    if (tag) heading.append(node("small", tag));
+    body.append(heading);
+    if (detail) body.append(node("p", detail));
+    item.append(mark, body);
     reasons.append(item);
-  }
-  if (!ranking.blockers.length) reasons.append(node("li", ranking.reason));
-  else if (!ranking.selected_rank && ranking.rank) reasons.append(node("li", ranking.reason));
-  target.append(reasons);
+  };
+  for (const blocker of ranking.blockers)
+    reason(blocker.label, blocker.detail, blockerTones[blocker.code],
+      blocker.until > Date.now() / 1000 ? "Eligible after " + date(blocker.until, true) :
+      blocker.code === "metadata" ? "Blocks scoring" : "");
+  if (!ranking.blockers.length || (!ranking.selected_rank && ranking.rank)) reason(ranking.reason, "");
+  conditions.append(reasons);
+  const summary = node("dl");
+  definitions(summary, [
+    ["Policy", ranking.policy],
+    ["Selection", ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
+    ...(ranking.selection_reason ? [["Reason", ranking.selection_reason]] : []),
+    ["Completion rank", ranking.score_rank ? `#${count(ranking.score_rank)} before trial reservations` : "Not scored"],
+    ["Evaluated", date(ranking.observed_at, true)],
+  ]);
+  plan.append(node("h4", "Optimizer plan"), summary);
+  if (!ranking.score && !ranking.metadata.known)
+    plan.append(node("p", "No completion score until metadata supplies the remaining size. A guessed score would be misleading.", "muted"));
+  grid.append(conditions, plan);
+  target.append(grid);
   if (ranking.score) {
     const score = ranking.score, format = (value) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value) + " s";
     target.append(node("h4", "Completion score · lower ranks first"), node("p",
@@ -975,27 +1285,34 @@ function renderRanking(row) {
       ["Remaining work", bytes(score.remaining_bytes)], ["Evidence tier", score.proven ? "Useful measured throughput" : "Untested / below useful speed"],
       ["Complete source", score.viable ? "Confirmed by current evidence" : "Not confirmed"]]);
     target.append(evidence, node("p", "More remaining work or a lower speed raises the base cost. Age, completion and remaining-size boosts reduce it. Seeders inform the speed estimate; popularity and peers choose discovery trials, not extra score points.", "muted"));
-  } else if (!ranking.metadata.known) target.append(node("p", "No completion score until metadata supplies the remaining size. A guessed score would be misleading.", "muted"));
+  }
   const metadata = ranking.metadata;
   const metadataSection = node("details", null, "metadata-history");
   metadataSection.open = metadataOpen ?? !metadata.known;
   metadataSection.append(node("summary", "Metadata & discovery"));
-  const history = node("dl", null, "definition-grid");
-  const outcomes = {metadata: "Metadata acquired", no_metadata: "Window ended without metadata", unobserved: "Insufficient continuous observation"};
-  definitions(history, [["Metadata", metadata.known ? "Available" : "Not acquired"],
-    ["Observed attempts", count(metadata.attempts)], ["Acquired / no metadata", `${count(metadata.successes)} / ${count(metadata.failures)}`],
-    ["Unconfirmed windows", count(metadata.unobserved)],
-    ["Current observation", metadata.active ? `Active · ${count(Math.round(metadata.active_seconds))} seconds observed` : "Not active"],
-    ["Last result", outcomes[metadata.last_outcome] || "No completed attempt recorded"],
-    ...(metadata.last_at ? [["Last result at", date(metadata.last_at, true)]] : []),
-    ...(metadata.trial_until > Date.now() / 1000 ? [["Trial ends", date(metadata.trial_until, true)]] : []),
-    ...(metadata.retry_at > Date.now() / 1000 ? [["Metadata retry", date(metadata.retry_at, true)]] : []),
-    ...(metadata.last_probe_at ? [["Last probe began", date(metadata.last_probe_at, true)]] : []),
-    ["Reported seeders / peers", `${count(ranking.signals.seeders)} / ${count(ranking.signals.known_peers)}`],
-  ]);
-  metadataSection.append(history, node("p", `Observed history since ${date(metadata.tracking_since, true)}. Earlier attempts are not reconstructed. Zero means no attempt observed during tracking.`, "muted"));
+  const panel = node("div", null, "metadata-panel"), counters = node("dl", null, "metadata-counters");
+  for (const [label, value] of [["Metadata", metadata.known ? "Available" : "Not acquired"],
+    ["Observed attempts", count(metadata.attempts)], ["Acquired", count(metadata.successes)],
+    ["No metadata", count(metadata.failures)], ["Unconfirmed windows", count(metadata.unobserved)]]) {
+    const cell = node("div");
+    cell.append(node("dt", label), node("dd", value));
+    counters.append(cell);
+  }
+  panel.append(metadataTimeline(ranking), counters,
+    node("p", `Observed history since ${date(metadata.tracking_since, true)}. Earlier attempts are not reconstructed. Zero means no attempt observed during tracking.`, "muted"));
+  metadataSection.append(panel);
   target.append(metadataSection);
 }
+$("detail-copy").addEventListener("click", async () => {
+  const hash = state.selectedTorrent?.hash;
+  if (!hash) return;
+  try {
+    await navigator.clipboard.writeText(hash);
+    $("detail-copy").textContent = "Copied";
+  } catch {
+    $("detail-copy").textContent = "Copy failed";
+  }
+});
 document.querySelectorAll("[data-action]").forEach((button) =>
   button.addEventListener("click", async () => {
     const hash = state.selectedTorrent?.hash;
@@ -1016,20 +1333,108 @@ document.querySelectorAll("[data-action]").forEach((button) =>
     }
   }),
 );
+function localDay(seconds) {
+  try {
+    return new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: zone() });
+  } catch {
+    return new Date(seconds * 1000).toISOString().slice(0, 10);
+  }
+}
+function localParts(seconds, options) {
+  try {
+    return new Date(seconds * 1000).toLocaleString([], { timeZone: zone(), ...options });
+  } catch {
+    return new Date(seconds * 1000).toISOString();
+  }
+}
+function shiftDay(period, days) {
+  const [year, month, day] = period.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+function dayHeading(seconds) {
+  const day = localDay(seconds), today = state.statistics?.today.period;
+  return (today && day === today ? "Today · " : today && day === shiftDay(today, -1) ? "Yesterday · " : "") +
+    localParts(seconds, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+function syncHistoryRange() {
+  const today = state.statistics?.today.period, month = state.statistics?.month.period,
+    from = $("history-from").value, to = $("history-to").value;
+  const range = state.historyCustom ? "custom"
+    : !from && !to ? "all"
+    : today && from === today && to === today ? "today"
+    : today && from === shiftDay(today, -6) && to === today ? "week"
+    : month && from === month && !to ? "month"
+    : "custom";
+  document.querySelectorAll("#history-range button").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.range === range);
+    button.setAttribute("aria-pressed", String(button.dataset.range === range));
+  });
+  $("history-filter").classList.toggle("custom-range", range === "custom");
+}
+document.querySelectorAll("#history-range button").forEach((button) =>
+  button.addEventListener("click", () => {
+    const range = button.dataset.range, today = state.statistics?.today.period;
+    state.historyCustom = range === "custom";
+    if (range !== "custom" && (range === "all" || today)) {
+      $("history-from").value = range === "today" ? today : range === "week" ? shiftDay(today, -6) : range === "month" ? state.statistics.month.period : "";
+      $("history-to").value = range === "today" || range === "week" ? today : "";
+      $("history-filter").requestSubmit();
+    }
+    syncHistoryRange();
+  }),
+);
 async function loadHistory() {
   const result = await api(
       `/api/v1/completions?page=${state.historyPage}&limit=50${state.historyQuery}`,
     ),
-    fragment = document.createDocumentFragment();
+    stats = state.statistics,
+    table = $("history-table"),
+    daily = new Map((stats?.daily || []).map((day) => [day.period, day])),
+    peak = Math.max(1, ...(stats?.daily || []).map((day) => day.bytes || 0)),
+    totals = $("history-totals");
+  syncHistoryRange();
+  totals.replaceChildren();
+  const tile = (label, value, note, cls = "") => {
+    const item = node("article", null, "metric " + cls), body = node("div");
+    body.append(node("span", label), node("strong", value), node("small", note));
+    item.append(body);
+    totals.append(item);
+  };
+  if (stats) {
+    const previous = stats.comparison?.previous_month || stats.monthly.at(-2);
+    tile("All recorded completions", count(stats.total_completed),
+      stats.coverage?.since ? "Since " + date(stats.coverage.since, true) : "Observed torrents");
+    tile("Total payload", bytes(stats.total_bytes), "Completed wanted data");
+    tile("This month", `${count(stats.month.count)} · ${bytes(stats.month.bytes)}`,
+      previous?.count == null ? "No prior-month coverage" : `Last month ${count(previous.count)} · ${bytes(previous.bytes)}`);
+  }
+  tile("Matching these filters", count(result.total), state.historyQuery ? "Filters applied" : "No filters applied", "highlight");
+  table.querySelectorAll("tbody").forEach((n) => n.remove());
+  let body, current;
   for (const row of result.rows) {
-    const tr = node("tr");
-    tr.append(
-      nameCell(row),
-      node("td", row.category || "Uncategorized"),
-      node("td", date(row.completed, true)),
-      node("td", bytes(row.bytes)),
-    );
-    const source = node("td");
+    const day = localDay(row.completed);
+    if (day !== current) {
+      current = day;
+      body = node("tbody");
+      const group = node("tr", null, "group-row"), heading = node("th"), content = node("div");
+      heading.colSpan = 5;
+      heading.scope = "rowgroup";
+      content.append(node("strong", dayHeading(row.completed)));
+      const info = daily.get(day);
+      if (!state.historyQuery && info && info.count != null) {
+        const meter = node("progress");
+        meter.max = peak;
+        meter.value = info.bytes;
+        meter.setAttribute("aria-label", "Payload compared with the busiest of the last 30 days");
+        content.append(node("span", `${count(info.count)} completed · ${bytes(info.bytes)}`), meter);
+      }
+      heading.append(content);
+      group.append(heading);
+      body.append(group);
+      table.append(body);
+    }
+    const tr = node("tr"), name = node("td", null, "name-cell"), source = node("td", null, "numeric");
+    name.append(node("strong", row.name));
     source.append(
       badge(
         row.source === "backfill"
@@ -1039,10 +1444,15 @@ async function loadHistory() {
             : "Observed",
       ),
     );
-    tr.append(source);
-    fragment.append(tr);
+    tr.append(
+      node("td", localParts(row.completed, { hour: "numeric", minute: "2-digit" })),
+      name,
+      node("td", row.category || "Uncategorized"),
+      node("td", bytes(row.bytes), "numeric"),
+      source,
+    );
+    body.append(tr);
   }
-  $("history-rows").replaceChildren(fragment);
   $("history-empty").hidden = !!result.rows.length;
   $("history-page-label").textContent =
     `Page ${result.page} of ${Math.ceil(result.total / result.limit) || 1} · ${count(result.total)} completions`;
@@ -1075,23 +1485,73 @@ $("history-next").addEventListener("click", () => {
   state.historyPage++;
   loadHistory().catch((e) => toast(e.message));
 });
+const actionTitles = { prioritize: "Move to top", reannounce: "Reannounce", pause: "Pause", resume: "Resume", force_start: "Force start", unforce: "Return to queue" };
+const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", resume: "play", force_start: "play", unforce: "refresh" };
+const outcomeNotes = {
+  accepted: "Accepted; waiting for the next client observation",
+  confirmed: "Confirmed by a client observation",
+  uncertain: "The result could not be confirmed; inspect the torrent before retrying",
+  rejected: "The request was refused",
+};
 function renderActivity() {
-  const target = $("activity-list");
+  const target = $("activity-list"), pills = $("activity-outcomes"),
+    audit = state.activityType === "audit";
+  let events = (audit ? state.activity.audit : state.activity.actions) || [];
   target.replaceChildren();
-  const events =
-    state.activityType === "audit"
-      ? state.activity.audit
-      : state.activity.actions;
-  if (!events?.length) {
-    target.append(node("p", "No activity recorded.", "empty"));
+  pills.replaceChildren();
+  pills.hidden = audit || !events.length;
+  if (!audit && events.length) {
+    const counts = {};
+    for (const event of events) counts[event.outcome] = (counts[event.outcome] || 0) + 1;
+    if (!counts[state.activityOutcome]) state.activityOutcome = "all";
+    for (const key of ["all", ...Object.keys(counts).sort()]) {
+      const button = node("button", key === "all" ? "All" : key.charAt(0).toUpperCase() + key.slice(1));
+      button.type = "button";
+      button.dataset.focusKey = "outcome:" + key;
+      button.setAttribute("aria-pressed", String(key === state.activityOutcome));
+      button.append(node("span", count(key === "all" ? events.length : counts[key])));
+      button.addEventListener("click", () => {
+        state.activityOutcome = key;
+        renderActivity();
+        refocus("outcome:" + key);
+      });
+      pills.append(button);
+    }
+    if (state.activityOutcome !== "all") events = events.filter((event) => event.outcome === state.activityOutcome);
+  }
+  if (!events.length) {
+    const empty = node("div", null, "empty-state");
+    empty.append(
+      node("strong", "No activity recorded"),
+      node("p", audit
+        ? "Settings and account changes appear here once an administrator makes one."
+        : "Actions taken from a torrent’s details appear here with their outcome."),
+    );
+    if (!audit) {
+      const open = node("button", "Go to torrents", "text-button");
+      open.type = "button";
+      open.addEventListener("click", () => navigate("torrents"));
+      empty.append(open);
+    }
+    target.append(empty);
     return;
   }
+  let current, group;
   for (const event of events) {
+    const day = localDay(event.at);
+    if (day !== current) {
+      current = day;
+      group = node("section", null, "panel activity-day");
+      group.append(node("h2", dayHeading(event.at)));
+      target.append(group);
+    }
     const row = node("div", null, "activity-row"),
+      mark = node("span", null, "activity-mark"),
       body = node("div");
-    if (state.activityType === "audit") {
+    if (audit) {
+      mark.append(icon("edit"));
       body.append(
-        node("strong", event.event.replaceAll(".", " ")),
+        node("strong", event.event.charAt(0).toUpperCase() + event.event.slice(1).replaceAll(".", " ")),
         node(
           "small",
           `${event.actor} · ${Object.entries(event.detail)
@@ -1106,29 +1566,37 @@ function renderActivity() {
       const torrent = state.status?.snapshot?.torrents.find(
         (r) => r.hash === event.torrent,
       );
+      mark.append(icon(actionIcons[event.action] || "minus"));
       body.append(
         node(
           "strong",
-          event.action.charAt(0).toUpperCase() + event.action.slice(1),
+          actionTitles[event.action] || event.action.charAt(0).toUpperCase() + event.action.slice(1),
         ),
-        node("small", torrent?.name || event.torrent),
       );
+      if (torrent) {
+        const open = node("button", torrent.name, "text-button");
+        open.type = "button";
+        open.dataset.focusKey = "activity:" + event.at + event.torrent;
+        open.addEventListener("click", () => openDetails(torrent));
+        body.append(open);
+      } else body.append(node("small", event.torrent));
     }
-    row.append(node("time", date(event.at, true)), body);
-    if (state.activityType === "actions")
+    row.append(node("time", localParts(event.at, { hour: "numeric", minute: "2-digit" })), mark, body);
+    if (!audit)
       row.append(
         badge(
           event.outcome,
           event.outcome === "confirmed"
             ? "good"
-            : ["uncertain", "pending"].includes(event.outcome)
+            : ["uncertain", "pending", "accepted"].includes(event.outcome)
               ? "warning"
               : event.outcome === "rejected"
                 ? "error"
                 : "",
         ),
+        node("small", outcomeNotes[event.outcome] || "", "activity-note"),
       );
-    target.append(row);
+    group.append(row);
   }
 }
 document.querySelectorAll("[data-activity]").forEach((b) =>
@@ -1443,8 +1911,21 @@ function settingsForm(key) {
     if (groups.has(group)) subsections.append(groups.get(group).parentElement);
   }
   if (groups.size) form.append(subsections);
-  const controls = node("div", null, "button-row"),
+  const controls = node("div", null, "button-row settings-actions"),
+    unsaved = node("span", "No unsaved changes", "settings-status"),
     save = node("button", "Save changes", "button primary");
+  const pending = () => {
+    let changed = 0;
+    for (const input of form.querySelectorAll("input[name],select[name]")) {
+      if (input.disabled) continue;
+      const value = inputValue(input, input.dataset.type);
+      if (JSON.stringify(value) !== input.dataset.original && (input.type !== "password" || value)) changed++;
+    }
+    unsaved.textContent = changed ? `${changed} unsaved change${changed === 1 ? "" : "s"}` : "No unsaved changes";
+    unsaved.classList.toggle("dirty", !!changed);
+  };
+  form.addEventListener("input", pending);
+  form.addEventListener("change", pending);
   save.type = "submit";
   save.disabled = section.fields.every((f) =>
     config.locked.includes(f[0]),
@@ -1475,7 +1956,7 @@ function settingsForm(key) {
       reset.disabled = false;
     }
   });
-  controls.append(save, reset);
+  controls.append(unsaved, reset, save);
   if (key === "client" || key === "sso") {
     const test = node(
       "button",
@@ -1617,8 +2098,15 @@ async function loadSettings() {
     ...Object.entries(settingSections),
     ["deployment", { title: "Deployment" }],
   ]) {
-    const button = node("button", section.title);
+    const button = node("button");
     button.type = "button";
+    button.append(node("strong", section.title), node("small", {
+      general: "Timezone, cadence and retention",
+      client: "Client connection",
+      optimizer: "Queue policy and tuning",
+      sso: "Identity provider sign-in",
+      deployment: "Read-only installation details",
+    }[key]));
     button.classList.toggle("selected", key === state.settingsTab);
     button.addEventListener("click", () => {
       state.settingsTab = key;
@@ -1641,21 +2129,28 @@ $("reload-settings").addEventListener("click", () =>
 async function loadUsers() {
   const result = await api("/api/v1/users");
   state.users = result.users;
-  const fragment = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment(),
+    roles = { admin: ["Administrator", "info"], operator: ["Operator", "good"], viewer: ["Viewer", ""] };
+  $("user-summary").textContent =
+    `Account access for this installation · ${count(result.users.length)} user${result.users.length === 1 ? "" : "s"}`;
+  for (const role of Object.keys(roles)) {
+    const total = result.users.filter((user) => user.role === role).length;
+    $("role-count-" + role).replaceChildren(node("strong", count(total)), total === 1 ? " user" : " users");
+  }
   for (const user of result.users) {
     const tr = node("tr"),
-      name = node("td", null, "name-cell");
-    name.append(
-      node("strong", user.display_name),
-      node("small", user.username),
-    );
+      name = node("td", null, "name-cell user-cell"),
+      identity = node("div"),
+      title = node("strong", user.display_name);
+    if (user.username === state.user?.username) title.append(node("span", "You", "badge"));
+    identity.append(title, node("small", user.username));
+    name.append(node("span", (user.display_name || user.username).slice(0, 1).toUpperCase(), "avatar"), identity);
     const role = node("td");
-    role.append(badge(user.role, user.role === "admin" ? "info" : ""));
-    const status = node("td");
-    status.append(
-      badge(user.active ? "Enabled" : "Disabled", user.active ? "good" : ""),
-    );
-    const actions = node("td"),
+    role.append(badge(...(roles[user.role] || [user.role, ""])));
+    const status = node("td"), dot = node("span", null, "user-status");
+    dot.append(node("span", null, "status-dot " + (user.active ? "good" : "")), user.active ? "Enabled" : "Disabled");
+    status.append(dot);
+    const actions = node("td", null, "numeric"),
       edit = node("button", "Edit", "button compact");
     edit.setAttribute("aria-label", "Edit " + user.username);
     edit.addEventListener("click", () => editUser(user));

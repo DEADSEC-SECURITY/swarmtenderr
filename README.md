@@ -5,9 +5,10 @@ statistics, local accounts, Authentik-compatible OIDC, and editable settings.
 SQLite is the default; an existing PostgreSQL database is supported by the same
 image. One installation manages one client and one set of users.
 
-Release 0.6.0 makes manual torrent actions available to operators and
-administrators independently of automatic optimization. Deployment settings are
-editable defaults; legacy control switches and setting lock lists are deprecated.
+Release 0.7.0 redesigns the live dashboard and torrent inspector, with download
+stages, ranking conditions, metadata timelines, completion date presets and
+interactive mini charts. Settings retain aligned, non-collapsible subsections.
+Manual controls remain independent of automatic optimization.
 
 ## Install
 

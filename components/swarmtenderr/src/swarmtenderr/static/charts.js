@@ -120,7 +120,7 @@
       if (value.kind === "transfer") return timestamp(row.at) + " · Download " + options.bytes(row.download) + "/s · Upload " + options.bytes(row.upload) + "/s";
       return (value.period === "monthly" ? row.period.slice(0, 7) : row.period) + ": " + (row.count == null ? "No historical coverage" : row.count + " completed · " + options.bytes(row.bytes)) + (row.partial ? " · Partial coverage" : "");
     }
-    function render(target, kind, rows, period) {
+    function render(target, kind, rows, period, metric = null) {
       if (!target.clientWidth) return;
       const value = record(target, kind);
       if (value.period !== period) value.zoom = null;
@@ -132,23 +132,28 @@
       const download = color("--accent", "#8fb3ff"), upload = color("--green", "#7eddbb");
       const text = color("--muted", "#94a3b8"), line = color("--line", "#2b3747");
       const background = color("--panel", "#141b25");
+      // A range slider over a few minutes of samples is noise; wheel and keyboard zoom remain.
+      const slider = !metric && (kind === "completion" || (rows.length > 1 && rows[rows.length - 1].at - rows[0].at >= 3600));
       const dataZoom = [
-        { id: "range", type: "slider", height: 16, bottom: 2, borderColor: line, showDetail: false, brushSelect: false, backgroundColor: background, fillerColor: "rgba(143,179,255,0.12)", handleStyle: { color: download }, ...(value.zoom || { start: 0, end: 100 }) },
+        { id: "range", type: "slider", show: slider, height: 16, bottom: 2, borderColor: line, showDetail: false, brushSelect: false, backgroundColor: background, fillerColor: "rgba(143,179,255,0.12)", handleStyle: { color: download }, ...(value.zoom || { start: 0, end: 100 }) },
         { id: "inside", type: "inside", zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false, moveOnMouseMove: true },
       ];
       const series = kind === "completion" ? [{ id: "completions", name: "Completed", type: "bar", barMaxWidth: 28,
-        data: rows.map((row) => ({ value: row.count, itemStyle: { color: download, opacity: row.partial ? 0.45 : 1, borderRadius: [3, 3, 0, 0] } })),
-        emphasis: { itemStyle: { opacity: 1 } }, cursor: "pointer" }] : ["Download", "Upload"].map((name, index) => ({ id: name, name, type: "line", showSymbol: rows.length === 1, symbolSize: 5, connectNulls: false, sampling: "lttb", lineStyle: { width: 2 }, itemStyle: { color: index ? upload : download }, emphasis: { focus: "series" }, data: rows.map((row) => [row.at * 1000, row[index ? "upload" : "download"]]) }));
+        data: rows.map((row) => ({ value: row[metric || "count"], itemStyle: { color: download, opacity: row.partial ? 0.45 : 1, borderRadius: [3, 3, 0, 0] } })),
+        emphasis: { itemStyle: { opacity: 1 } }, cursor: "pointer" }] : ["Download", "Upload"].map((name, index) => ({ id: name, name, type: "line", showSymbol: rows.length === 1, symbolSize: 5, connectNulls: false, sampling: "lttb", lineStyle: { width: 2 }, areaStyle: { opacity: 0.14 }, itemStyle: { color: index ? upload : download }, emphasis: { focus: "series" }, data: rows.map((row) => [row.at * 1000, row[index ? "upload" : "download"]]) }));
       value.chart.setOption({
         animation: false, backgroundColor: "transparent", textStyle: { fontFamily: css.fontFamily, color: text },
-        grid: { top: 18, right: 14, bottom: 55, left: kind === "transfer" ? 78 : 42 },
-        tooltip: { trigger: "axis", triggerOn: "mousemove|click", confine: true, renderMode: "richText", backgroundColor: background, borderColor: line, textStyle: { color: color("--text", "#e5eaf2"), fontSize: 12 }, axisPointer: { type: kind === "completion" ? "shadow" : "line" }, formatter: (items) => {
+        grid: metric ? { top: 2, right: 2, bottom: 2, left: 2 } : { top: 18, right: 14, bottom: slider ? 55 : 28, left: kind === "transfer" ? 78 : 42 },
+        tooltip: { trigger: "axis", triggerOn: "mousemove|click", confine: !metric, renderMode: metric ? "html" : "richText", appendTo: metric ? document.body : undefined, backgroundColor: background, borderColor: line, textStyle: { color: color("--text", "#e5eaf2"), fontSize: 12 }, axisPointer: { type: kind === "completion" ? "shadow" : "line" }, formatter: (items) => {
           const index = items[0]?.dataIndex;
-          return index == null ? "" : describe(value, index).split(" · ").join("\n");
+          if (index == null) return "";
+          const text = describe(value, index);
+          // Small plots need a body-level tooltip; escape every data-derived value.
+          return metric ? text.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]).split(" · ").join("<br>") : text.split(" · ").join("\n");
         } },
         legend: { show: false, selected: { ...value.selected } },
-        xAxis: kind === "completion" ? { type: "category", data: value.axis, axisLabel: { color: text, formatter: (label) => (period === "monthly" ? label.slice(0, 7) : label.slice(5)) }, axisTick: { show: false }, axisLine: { lineStyle: { color: line } } } : { type: "time", axisLabel: { color: text, hideOverlap: true, formatter: (stamp) => timestamp(stamp / 1000, false) }, axisLine: { lineStyle: { color: line } }, splitLine: { show: false } },
-        yAxis: { type: "value", min: 0, minInterval: kind === "completion" ? 1 : undefined, splitNumber: 3, axisLabel: { color: text, formatter: kind === "completion" ? "{value}" : (amount) => options.bytes(amount) + "/s" }, splitLine: { lineStyle: { color: line, type: "dashed" } } },
+        xAxis: kind === "completion" ? { show: !metric, type: "category", data: value.axis, axisLabel: { color: text, formatter: (label) => (period === "monthly" ? label.slice(0, 7) : label.slice(5)) }, axisTick: { show: false }, axisLine: { lineStyle: { color: line } } } : { type: "time", axisLabel: { color: text, hideOverlap: true, formatter: (stamp) => timestamp(stamp / 1000, false) }, axisLine: { lineStyle: { color: line } }, splitLine: { show: false } },
+        yAxis: { show: !metric, type: "value", min: 0, minInterval: kind === "completion" ? 1 : undefined, splitNumber: 3, axisLabel: { color: text, formatter: kind === "completion" ? "{value}" : (amount) => options.bytes(amount) + "/s" }, splitLine: { lineStyle: { color: line, type: "dashed" } } },
         dataZoom, series,
         graphic: rows.length ? [] : [{ type: "text", left: "center", top: "middle", style: { text: "Waiting for observations", fill: text } }],
       }, { notMerge: true });
@@ -159,6 +164,7 @@
     }
     return {
       completion: (target, rows, period) => render(target, "completion", rows, period),
+      sparkline: (target, rows, period, metric) => render(target, "completion", rows, period, metric),
       transfer: (target, rows) => render(target, "transfer", rows, "transfer"),
       dispose: () => {
         for (const value of records.values()) {
