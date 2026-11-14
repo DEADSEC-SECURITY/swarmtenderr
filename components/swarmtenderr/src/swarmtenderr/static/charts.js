@@ -132,16 +132,18 @@
       const download = color("--accent", "#8fb3ff"), upload = color("--green", "#7eddbb");
       const text = color("--muted", "#94a3b8"), line = color("--line", "#2b3747");
       const background = color("--panel", "#141b25");
+      // A range slider over a few minutes of samples is noise; wheel and keyboard zoom remain.
+      const slider = kind === "completion" || (rows.length > 1 && rows[rows.length - 1].at - rows[0].at >= 3600);
       const dataZoom = [
-        { id: "range", type: "slider", height: 16, bottom: 2, borderColor: line, showDetail: false, brushSelect: false, backgroundColor: background, fillerColor: "rgba(143,179,255,0.12)", handleStyle: { color: download }, ...(value.zoom || { start: 0, end: 100 }) },
+        { id: "range", type: "slider", show: slider, height: 16, bottom: 2, borderColor: line, showDetail: false, brushSelect: false, backgroundColor: background, fillerColor: "rgba(143,179,255,0.12)", handleStyle: { color: download }, ...(value.zoom || { start: 0, end: 100 }) },
         { id: "inside", type: "inside", zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false, moveOnMouseMove: true },
       ];
       const series = kind === "completion" ? [{ id: "completions", name: "Completed", type: "bar", barMaxWidth: 28,
         data: rows.map((row) => ({ value: row.count, itemStyle: { color: download, opacity: row.partial ? 0.45 : 1, borderRadius: [3, 3, 0, 0] } })),
-        emphasis: { itemStyle: { opacity: 1 } }, cursor: "pointer" }] : ["Download", "Upload"].map((name, index) => ({ id: name, name, type: "line", showSymbol: rows.length === 1, symbolSize: 5, connectNulls: false, sampling: "lttb", lineStyle: { width: 2 }, itemStyle: { color: index ? upload : download }, emphasis: { focus: "series" }, data: rows.map((row) => [row.at * 1000, row[index ? "upload" : "download"]]) }));
+        emphasis: { itemStyle: { opacity: 1 } }, cursor: "pointer" }] : ["Download", "Upload"].map((name, index) => ({ id: name, name, type: "line", showSymbol: rows.length === 1, symbolSize: 5, connectNulls: false, sampling: "lttb", lineStyle: { width: 2 }, areaStyle: { opacity: 0.14 }, itemStyle: { color: index ? upload : download }, emphasis: { focus: "series" }, data: rows.map((row) => [row.at * 1000, row[index ? "upload" : "download"]]) }));
       value.chart.setOption({
         animation: false, backgroundColor: "transparent", textStyle: { fontFamily: css.fontFamily, color: text },
-        grid: { top: 18, right: 14, bottom: 55, left: kind === "transfer" ? 78 : 42 },
+        grid: { top: 18, right: 14, bottom: slider ? 55 : 28, left: kind === "transfer" ? 78 : 42 },
         tooltip: { trigger: "axis", triggerOn: "mousemove|click", confine: true, renderMode: "richText", backgroundColor: background, borderColor: line, textStyle: { color: color("--text", "#e5eaf2"), fontSize: 12 }, axisPointer: { type: kind === "completion" ? "shadow" : "line" }, formatter: (items) => {
           const index = items[0]?.dataIndex;
           return index == null ? "" : describe(value, index).split(" · ").join("\n");

@@ -9,6 +9,9 @@ const state = {
   view: "overview",
   chartPeriod: "daily",
   activityType: "actions",
+  activityOutcome: "all",
+  torrentFilter: "all",
+  historyCustom: false,
   torrentPage: 1,
   historyPage: 1,
   historyQuery: "",
@@ -204,7 +207,7 @@ function showLogin(reason = "") {
   state.settingsTab = "general";
   document
     .querySelectorAll(
-      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #detail-values, #detail-actions, #account-values",
+      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #queue-bar, #attention, #waiting-rows, #history-totals, #activity-outcomes, #torrent-states, #detail-values, #detail-actions, #account-values",
     )
     .forEach((element) => element.replaceChildren());
   document
@@ -215,7 +218,10 @@ function showLogin(reason = "") {
   $("history-uncategorized").checked = false;
   $("history-category").disabled = false;
   $("torrent-category").replaceChildren(new Option("All categories", ""));
-  $("torrent-filter").value = "all";
+  state.torrentFilter = "all";
+  state.activityOutcome = "all";
+  state.historyCustom = false;
+  document.querySelectorAll("#history-table tbody").forEach((n) => n.remove());
   [
     "completed-today",
     "completed-month",
@@ -230,7 +236,6 @@ function showLogin(reason = "") {
     "detail-name",
     "detail-policy",
     "action-result",
-    "torrent-summary",
     "history-page-label",
     "torrent-page-label",
   ].forEach((id) => ($(id).textContent = ""));
@@ -488,14 +493,22 @@ function render() {
     $("month-note").title = stats.month.partial
       ? "This month's coverage is partial"
       : "This month is a calendar period in progress";
+    $("today-note").textContent += ` · ${bytes(stats.today.bytes)} today`;
+    $("payload-note").textContent =
+      previousMonth.bytes == null
+        ? "Completed wanted data"
+        : `Last month ${bytes(previousMonth.bytes)}`;
+    sparkline($("spark-today"), stats.daily.slice(-14).map((d) => d.count), "Completions per day, last 14 days");
+    sparkline($("spark-month"), stats.monthly.map((d) => d.count), "Completions per month, last 12 months");
+    sparkline($("spark-payload"), stats.monthly.map((d) => d.bytes), "Payload per month, last 12 months");
     renderCategories(stats.categories);
     $("coverage-note").textContent = coverageText();
     $("history-coverage").textContent = coverageText();
     renderCompletionChart();
   }
   $("download-speed").textContent = bytes(snapshot?.download_speed) + "/s";
-  $("upload-speed").textContent =
-    "Upload " + bytes(snapshot?.upload_speed) + "/s";
+  $("upload-speed").textContent = bytes(snapshot?.upload_speed) + "/s";
+  renderAttention(rows);
   renderQueueSummary(rows);
   renderTransferChart();
   renderActive(rows);
@@ -535,18 +548,58 @@ function coverageText() {
     return "Completion collection starts with the first successful client observation.";
   return `Collection began ${date(coverage.since, true)}. Older surviving client records are included; previously removed torrents cannot be reconstructed. Timezone: ${zone()}.`;
 }
+function sparkline(target, values, label) {
+  const max = Math.max(1, ...values.map((value) => value || 0));
+  target.replaceChildren();
+  values.forEach((value, index) => {
+    const bar = node("span", null, index === values.length - 1 ? "current" : "");
+    bar.style.height = (value ? Math.max(8, (value / max) * 100) : 4) + "%";
+    target.append(bar);
+  });
+  target.setAttribute("aria-label", label);
+}
+const stateLabels = {
+  downloading: "Downloading", metadata: "Metadata", queued: "Queued", stalled: "Stalled",
+  stopped: "Stopped", error: "Error", seeding: "Seeding", complete: "Complete", other: "Other",
+};
+const stateOrder = Object.keys(stateLabels);
+function stateCounts(rows) {
+  const counts = {};
+  for (const row of rows) {
+    const key = classification(row)[2];
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+function percent(row) {
+  return (row.progress * 100).toFixed(1) + "%";
+}
+function refocus(key) {
+  [...document.querySelectorAll("[data-focus-key]")].find((n) => n.dataset.focusKey === key)?.focus({ preventScroll: true });
+}
+function showTorrents(filter) {
+  state.torrentFilter = filter;
+  state.torrentPage = 1;
+  navigate("torrents");
+}
 function renderCategories(categories) {
   $("category-panel").hidden = !categories.length;
-  const fragment = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment(),
+    max = Math.max(1, ...categories.map((category) => category.count));
   for (const category of categories.slice(0, 8)) {
-    const button = node("button", null, "category-row");
+    const button = node("button", null, "category-row"),
+      heading = node("span"),
+      track = node("span", null, "category-bar"),
+      fill = node("span");
     button.type = "button";
     button.dataset.focusKey = "category:" + category.category;
-    button.append(
+    heading.append(
       node("strong", category.category || "Uncategorized"),
-      node("span", count(category.count) + " completed"),
-      node("span", bytes(category.bytes)),
+      node("span", `${count(category.count)} · ${bytes(category.bytes)}`),
     );
+    fill.style.width = (category.count / max) * 100 + "%";
+    track.append(fill);
+    button.append(heading, track);
     button.addEventListener("click", () => {
       $("history-search").value = "";
       $("history-category").value = category.category;
@@ -562,40 +615,67 @@ function renderCategories(categories) {
       );
       state.historyQuery = "&" + query;
       state.historyPage = 1;
+      state.historyCustom = false;
       navigate("history");
     });
     fragment.append(button);
   }
   $("category-breakdown").replaceChildren(fragment);
 }
-function renderQueueSummary(rows) {
-  const values = [
-    ["Total", rows.length, "all"],
-    [
-      "Downloading",
-      rows.filter((r) => classification(r)[2] === "downloading").length,
-      "downloading",
-    ],
-    ["Queued", rows.filter((r) => r.state === "queuedDL").length, "queued"],
-    ["Stalled", rows.filter((r) => r.state === "stalledDL").length, "stalled"],
-    [
-      "Seeding",
-      rows.filter((r) => classification(r)[2] === "seeding").length,
-      "seeding",
-    ],
-  ];
-  $("queue-summary").replaceChildren();
-  for (const [label, value, filter] of values) {
-    const button = node("button");
-    button.dataset.focusKey = "queue:" + filter;
-    button.append(node("strong", count(value)), node("span", label));
-    button.addEventListener("click", () => {
-      $("torrent-filter").value = filter;
-      state.torrentPage = 1;
-      navigate("torrents");
-    });
-    $("queue-summary").append(button);
+function renderAttention(rows) {
+  const notes = {
+    error: () => "Error reported by the client",
+    stalled: (row) => `Stalled at ${percent(row)} · no data arriving`,
+    metadata: () => "Waiting on metadata · size unknown",
+  };
+  const order = Object.keys(notes),
+    items = rows
+      .filter((row) => row.progress < 1 && notes[classification(row)[2]])
+      .sort((a, b) => order.indexOf(classification(a)[2]) - order.indexOf(classification(b)[2])),
+    target = $("attention");
+  target.hidden = !items.length;
+  target.replaceChildren();
+  if (!items.length) return;
+  const heading = node("div", null, "attention-heading");
+  heading.append(icon("alert"), node("strong", `${count(items.length)} need${items.length === 1 ? "s" : ""} attention`));
+  target.append(heading);
+  for (const row of items.slice(0, 3)) {
+    const button = node("button"), text = node("span");
+    button.type = "button";
+    button.dataset.focusKey = "attention:" + row.hash;
+    text.append(node("strong", row.name), node("span", notes[classification(row)[2]](row)));
+    button.append(text, icon("chevron"));
+    button.addEventListener("click", () => openDetails(row));
+    target.append(button);
   }
+  if (items.length > 3) {
+    const more = node("button", `View all ${count(items.length)}`, "attention-more");
+    more.type = "button";
+    more.dataset.focusKey = "attention:more";
+    more.addEventListener("click", () => showTorrents("all"));
+    target.append(more);
+  }
+}
+function renderQueueSummary(rows) {
+  const counts = stateCounts(rows), bar = $("queue-bar"), legend = $("queue-summary"), parts = [];
+  $("queue-total").textContent = `${count(rows.length)} torrent${rows.length === 1 ? "" : "s"}`;
+  bar.replaceChildren();
+  legend.replaceChildren();
+  for (const key of stateOrder) {
+    const value = counts[key];
+    if (!value) continue;
+    const segment = node("span", null, "state-" + key);
+    segment.style.flexGrow = value;
+    bar.append(segment);
+    parts.push(`${value} ${stateLabels[key].toLowerCase()}`);
+    const button = node("button");
+    button.type = "button";
+    button.dataset.focusKey = "queue:" + key;
+    button.append(node("span", null, "state-swatch state-" + key), node("span", stateLabels[key]), node("strong", count(value)));
+    button.addEventListener("click", () => showTorrents(key));
+    legend.append(button);
+  }
+  bar.setAttribute("aria-label", parts.join(", ") || "No torrents");
 }
 const dashboardCharts = SwarmCharts.create({
   bytes, date, zone,
@@ -608,6 +688,7 @@ const dashboardCharts = SwarmCharts.create({
     $("history-category").disabled = false;
     $("history-uncategorized").checked = false;
     state.historyPage = 1;
+    state.historyCustom = false;
     state.historyQuery = "&" + new URLSearchParams(bounds);
     navigate("history");
   },
@@ -636,19 +717,25 @@ function nameCell(row) {
   );
   return td;
 }
-function progressCell(row) {
-  const td = node("td", null, "progress-cell");
-  td.append(node("span", (row.progress * 100).toFixed(1) + "%"));
-  const progress = node("progress");
+function progressBar(row) {
+  const progress = node("progress", null, "state-" + classification(row)[2]);
   progress.max = 1;
   progress.value = row.progress;
   progress.setAttribute("aria-label", row.name + " progress");
-  td.append(progress);
+  return progress;
+}
+function progressCell(row) {
+  const td = node("td", null, "progress-cell"),
+    unknown = row.progress < 1 && (row.ranking ? row.ranking.metadata.known === false : row.state === "metaDL");
+  const wrap = node("div");
+  wrap.append(progressBar(row), node("span", unknown ? "Size unknown" : percent(row), unknown ? "muted" : ""));
+  td.append(wrap);
   return td;
 }
 function detailsCell(row) {
   const td = node("td"),
-    button = node("button", "›", "icon-button");
+    button = node("button", null, "icon-button");
+  button.append(icon("chevron"));
   button.dataset.torrent = row.hash;
   button.dataset.focusKey = "torrent:" + row.hash;
   button.setAttribute("aria-label", "Details for " + row.name);
@@ -668,25 +755,56 @@ function rankingCell(row) {
   return cell;
 }
 function renderActive(rows) {
-  const active = rows
-      .filter((r) => r.progress < 1 && r.download_speed > 0)
-      .sort((a, b) => b.download_speed - a.download_speed)
-      .slice(0, 8),
-    fragment = document.createDocumentFragment();
-  for (const row of active) {
-    const tr = node("tr");
-    tr.append(
-      nameCell(row),
-      progressCell(row),
-      node("td", bytes(row.download_speed) + "/s"),
-      node("td", bytes(row.remaining_bytes)),
-      node("td", eta(row.eta_seconds)),
-      detailsCell(row),
-    );
-    fragment.append(tr);
+  const incomplete = rows.filter((r) => r.progress < 1),
+    active = incomplete
+      .filter((r) => r.download_speed > 0)
+      .sort((a, b) => b.download_speed - a.download_speed),
+    waiting = incomplete
+      .filter((r) => !(r.download_speed > 0))
+      .sort((a, b) => (a.ranking?.rank ?? 1e9) - (b.ranking?.rank ?? 1e9) || a.priority - b.priority || a.name.localeCompare(b.name)),
+    fragment = document.createDocumentFragment(),
+    rank = (row) => (row.ranking?.rank ? `rank #${count(row.ranking.rank)}` : "");
+  $("active-summary").textContent = active.length
+    ? `${count(active.length)} receiving data`
+    : "Transfers currently receiving data";
+  for (const row of active.slice(0, 8)) {
+    const button = node("button", null, "active-row"),
+      top = node("span", null, "active-row-top"),
+      name = node("span"),
+      bar = node("span", null, "active-row-bar");
+    button.type = "button";
+    button.dataset.focusKey = "torrent:" + row.hash;
+    button.setAttribute("aria-label", "Details for " + row.name);
+    name.append(node("strong", row.name), node("small", [row.category || "Uncategorized", rank(row)].filter(Boolean).join(" · ")));
+    top.append(name, node("span", `${bytes(row.remaining_bytes)} left · ${eta(row.eta_seconds)}`));
+    bar.append(progressBar(row), node("strong", percent(row)), node("span", bytes(row.download_speed) + "/s", "speed-down"));
+    button.append(top, bar);
+    button.addEventListener("click", () => openDetails(row));
+    fragment.append(button);
   }
   $("active-rows").replaceChildren(fragment);
   $("active-empty").hidden = !!active.length;
+  $("waiting-block").hidden = !waiting.length;
+  $("waiting-rows").replaceChildren();
+  for (const row of waiting.slice(0, 5)) {
+    const button = node("button", null, "waiting-row"),
+      name = node("span"),
+      [label, kind] = classification(row);
+    button.type = "button";
+    button.dataset.focusKey = "waiting:" + row.hash;
+    button.setAttribute("aria-label", "Details for " + row.name);
+    name.append(node("strong", row.name), node("small", [rank(row), row.progress > 0 ? percent(row) : ""].filter(Boolean).join(" · ")));
+    button.append(name, badge(label, kind));
+    button.addEventListener("click", () => openDetails(row));
+    $("waiting-rows").append(button);
+  }
+  if (waiting.length > 5) {
+    const more = node("button", `View ${count(waiting.length - 5)} more`, "text-button");
+    more.type = "button";
+    more.dataset.focusKey = "waiting:more";
+    more.addEventListener("click", () => showTorrents("all"));
+    $("waiting-rows").append(more);
+  }
 }
 function renderTorrents(rows) {
   const category = $("torrent-category").value,
@@ -705,8 +823,27 @@ function renderTorrents(rows) {
     $("torrent-category").replaceChildren(...options);
     $("torrent-category").value = category;
   }
+  const counts = stateCounts(rows), pills = $("torrent-states");
+  if (state.torrentFilter !== "all" && !stateLabels[state.torrentFilter]) state.torrentFilter = "all";
+  pills.replaceChildren();
+  for (const key of ["all", ...stateOrder]) {
+    const value = key === "all" ? rows.length : counts[key] || 0;
+    if (!value && key !== "all" && key !== state.torrentFilter) continue;
+    const button = node("button", key === "all" ? "All" : stateLabels[key]);
+    button.type = "button";
+    button.dataset.focusKey = "state:" + key;
+    button.setAttribute("aria-pressed", String(key === state.torrentFilter));
+    button.append(node("span", count(value)));
+    button.addEventListener("click", () => {
+      state.torrentFilter = key;
+      state.torrentPage = 1;
+      renderTorrents(state.status?.snapshot?.torrents || []);
+      refocus("state:" + key);
+    });
+    pills.append(button);
+  }
   const search = $("torrent-search").value.trim().toLowerCase(),
-    filter = $("torrent-filter").value;
+    filter = state.torrentFilter;
   let filtered = rows.filter(
     (r) =>
       (!search || r.name.toLowerCase().includes(search)) &&
@@ -739,24 +876,24 @@ function renderTorrents(rows) {
       status = node("td"),
       [label, kind] = classification(row);
     status.append(badge(label, kind));
+    const speed = node("td", null, "numeric speed-cell");
+    if (row.download_speed) speed.append(node("span", "↓ " + bytes(row.download_speed) + "/s", "speed-down"));
+    if (row.upload_speed) speed.append(node("span", "↑ " + bytes(row.upload_speed) + "/s", "speed-up"));
+    if (!speed.childNodes.length) speed.textContent = "—";
     tr.append(
+      rankingCell(row),
       nameCell(row),
       status,
       progressCell(row),
-      node("td", row.download_speed ? bytes(row.download_speed) + "/s" : "—"),
-      node("td", row.upload_speed ? bytes(row.upload_speed) + "/s" : "—"),
-      node("td", row.progress >= 1 ? "Complete" : eta(row.eta_seconds)),
-      node("td", `${row.seeds} / ${row.peers}`),
-      node("td", row.priority < 0 ? "—" : row.priority),
-      rankingCell(row),
+      speed,
+      node("td", row.progress >= 1 ? "Complete" : eta(row.eta_seconds), "numeric"),
+      node("td", `${row.seeds} / ${row.peers}`, "numeric"),
+      node("td", row.priority < 0 ? "—" : row.priority, "numeric"),
       detailsCell(row),
     );
     fragment.append(tr);
   }
   $("torrent-rows").replaceChildren(fragment);
-  $("table-count").textContent = count(rows.length);
-  $("torrent-summary").textContent =
-    `${count(filtered.length)} matching torrents`;
   $("torrent-empty").hidden = !!filtered.length;
   $("torrent-page-label").textContent =
     `Page ${state.torrentPage} of ${Math.ceil(filtered.length / 50) || 1} · ${count(filtered.length)} torrents`;
@@ -766,7 +903,6 @@ function renderTorrents(rows) {
 for (const id of [
   "torrent-search",
   "torrent-category",
-  "torrent-filter",
   "torrent-sort",
 ])
   $(id).addEventListener(id === "torrent-search" ? "input" : "change", () => {
@@ -812,26 +948,40 @@ function renderOptimizer(engine) {
   if (!engine.connected) return;
   const capacity = engine.capacity || {};
   $("optimizer-capacity").replaceChildren();
-  for (const [label, value] of [
-    [
-      "Download slots",
-      `${capacity.native_slots ?? "—"} native · ${capacity.applied_slots ?? "—"} recommended / ${capacity.requested_slots ?? "—"} requested`,
-    ],
-    [
-      "Download reservation",
-      `${bytes(capacity.ssd_reserved_bytes)} / ${bytes(capacity.ssd_budget_bytes)}`,
-    ],
-    [
+  const meter = (label, text, used, total) => {
+    const item = node("div"), heading = node("div");
+    heading.append(node("span", label), node("small", text));
+    item.append(heading);
+    if (total > 0) {
+      const bar = node("progress");
+      bar.max = total;
+      bar.value = Math.min(used || 0, total);
+      bar.setAttribute("aria-label", label);
+      item.append(bar);
+    }
+    $("optimizer-capacity").append(item);
+  };
+  meter(
+    "Download slots",
+    `${capacity.applied_slots ?? "—"} recommended of ${capacity.requested_slots ?? "—"} requested · ${capacity.native_slots ?? "—"} native`,
+    capacity.applied_slots,
+    capacity.requested_slots,
+  );
+  meter(
+    "Download reservation",
+    `${bytes(capacity.ssd_reserved_bytes)} of ${bytes(capacity.ssd_budget_bytes)}`,
+    capacity.ssd_reserved_bytes,
+    capacity.ssd_budget_bytes,
+  );
+  if (capacity.library_capacity_applicable === false)
+    meter("Import reservation", "No separate import destination", 0, 0);
+  else
+    meter(
       "Import reservation",
-      capacity.library_capacity_applicable === false
-        ? "No separate import destination"
-        : `${bytes(capacity.library_reserved_bytes)} / ${bytes(capacity.library_budget_bytes)}`,
-    ],
-  ]) {
-    const n = node("div");
-    n.append(node("small", label), node("strong", value));
-    $("optimizer-capacity").append(n);
-  }
+      `${bytes(capacity.library_reserved_bytes)} of ${bytes(capacity.library_budget_bytes)}`,
+      capacity.library_reserved_bytes,
+      capacity.library_budget_bytes,
+    );
 }
 function openDetails(row) {
   state.selectedTorrent = row;
@@ -1017,6 +1167,12 @@ const iconPaths = {
   down: "M8 2.5v10M4 8.8l4 4 4-4",
   up: "M8 13.5v-10M4 7.2l4-4 4 4",
   lock: "M4 7.5h8v6H4zM5.8 7.5V5.4a2.2 2.2 0 0 1 4.4 0v2.1",
+  chevron: "M6 3.5L10.5 8 6 12.5",
+  top: "M8 13.5V6M4.5 9L8 5.5 11.5 9M4 2.5h8",
+  refresh: "M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3",
+  pause: "M6 4v8M10 4v8",
+  play: "M5.5 3.5l6 4.5-6 4.5z",
+  edit: "M3 13l1-3.5L10.5 3l2.5 2.5L6.5 12z",
 };
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"),
@@ -1173,20 +1329,108 @@ document.querySelectorAll("[data-action]").forEach((button) =>
     }
   }),
 );
+function localDay(seconds) {
+  try {
+    return new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: zone() });
+  } catch {
+    return new Date(seconds * 1000).toISOString().slice(0, 10);
+  }
+}
+function localParts(seconds, options) {
+  try {
+    return new Date(seconds * 1000).toLocaleString([], { timeZone: zone(), ...options });
+  } catch {
+    return new Date(seconds * 1000).toISOString();
+  }
+}
+function shiftDay(period, days) {
+  const [year, month, day] = period.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+function dayHeading(seconds) {
+  const day = localDay(seconds), today = state.statistics?.today.period;
+  return (today && day === today ? "Today · " : today && day === shiftDay(today, -1) ? "Yesterday · " : "") +
+    localParts(seconds, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+function syncHistoryRange() {
+  const today = state.statistics?.today.period, month = state.statistics?.month.period,
+    from = $("history-from").value, to = $("history-to").value;
+  const range = state.historyCustom ? "custom"
+    : !from && !to ? "all"
+    : today && from === today && to === today ? "today"
+    : today && from === shiftDay(today, -6) && to === today ? "week"
+    : month && from === month && !to ? "month"
+    : "custom";
+  document.querySelectorAll("#history-range button").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.range === range);
+    button.setAttribute("aria-pressed", String(button.dataset.range === range));
+  });
+  $("history-filter").classList.toggle("custom-range", range === "custom");
+}
+document.querySelectorAll("#history-range button").forEach((button) =>
+  button.addEventListener("click", () => {
+    const range = button.dataset.range, today = state.statistics?.today.period;
+    state.historyCustom = range === "custom";
+    if (range !== "custom" && (range === "all" || today)) {
+      $("history-from").value = range === "today" ? today : range === "week" ? shiftDay(today, -6) : range === "month" ? state.statistics.month.period : "";
+      $("history-to").value = range === "today" || range === "week" ? today : "";
+      $("history-filter").requestSubmit();
+    }
+    syncHistoryRange();
+  }),
+);
 async function loadHistory() {
   const result = await api(
       `/api/v1/completions?page=${state.historyPage}&limit=50${state.historyQuery}`,
     ),
-    fragment = document.createDocumentFragment();
+    stats = state.statistics,
+    table = $("history-table"),
+    daily = new Map((stats?.daily || []).map((day) => [day.period, day])),
+    peak = Math.max(1, ...(stats?.daily || []).map((day) => day.bytes || 0)),
+    totals = $("history-totals");
+  syncHistoryRange();
+  totals.replaceChildren();
+  const tile = (label, value, note, cls = "") => {
+    const item = node("article", null, "metric " + cls), body = node("div");
+    body.append(node("span", label), node("strong", value), node("small", note));
+    item.append(body);
+    totals.append(item);
+  };
+  if (stats) {
+    const previous = stats.comparison?.previous_month || stats.monthly.at(-2);
+    tile("All recorded completions", count(stats.total_completed),
+      stats.coverage?.since ? "Since " + date(stats.coverage.since, true) : "Observed torrents");
+    tile("Total payload", bytes(stats.total_bytes), "Completed wanted data");
+    tile("This month", `${count(stats.month.count)} · ${bytes(stats.month.bytes)}`,
+      previous?.count == null ? "No prior-month coverage" : `Last month ${count(previous.count)} · ${bytes(previous.bytes)}`);
+  }
+  tile("Matching these filters", count(result.total), state.historyQuery ? "Filters applied" : "No filters applied", "highlight");
+  table.querySelectorAll("tbody").forEach((n) => n.remove());
+  let body, current;
   for (const row of result.rows) {
-    const tr = node("tr");
-    tr.append(
-      nameCell(row),
-      node("td", row.category || "Uncategorized"),
-      node("td", date(row.completed, true)),
-      node("td", bytes(row.bytes)),
-    );
-    const source = node("td");
+    const day = localDay(row.completed);
+    if (day !== current) {
+      current = day;
+      body = node("tbody");
+      const group = node("tr", null, "group-row"), heading = node("th"), content = node("div");
+      heading.colSpan = 5;
+      heading.scope = "rowgroup";
+      content.append(node("strong", dayHeading(row.completed)));
+      const info = daily.get(day);
+      if (!state.historyQuery && info && info.count != null) {
+        const meter = node("progress");
+        meter.max = peak;
+        meter.value = info.bytes;
+        meter.setAttribute("aria-label", "Payload compared with the busiest of the last 30 days");
+        content.append(node("span", `${count(info.count)} completed · ${bytes(info.bytes)}`), meter);
+      }
+      heading.append(content);
+      group.append(heading);
+      body.append(group);
+      table.append(body);
+    }
+    const tr = node("tr"), name = node("td", null, "name-cell"), source = node("td", null, "numeric");
+    name.append(node("strong", row.name));
     source.append(
       badge(
         row.source === "backfill"
@@ -1196,10 +1440,15 @@ async function loadHistory() {
             : "Observed",
       ),
     );
-    tr.append(source);
-    fragment.append(tr);
+    tr.append(
+      node("td", localParts(row.completed, { hour: "numeric", minute: "2-digit" })),
+      name,
+      node("td", row.category || "Uncategorized"),
+      node("td", bytes(row.bytes), "numeric"),
+      source,
+    );
+    body.append(tr);
   }
-  $("history-rows").replaceChildren(fragment);
   $("history-empty").hidden = !!result.rows.length;
   $("history-page-label").textContent =
     `Page ${result.page} of ${Math.ceil(result.total / result.limit) || 1} · ${count(result.total)} completions`;
@@ -1232,23 +1481,73 @@ $("history-next").addEventListener("click", () => {
   state.historyPage++;
   loadHistory().catch((e) => toast(e.message));
 });
+const actionTitles = { prioritize: "Move to top", reannounce: "Reannounce", pause: "Pause", resume: "Resume" };
+const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", resume: "play" };
+const outcomeNotes = {
+  accepted: "Accepted; waiting for the next client observation",
+  confirmed: "Confirmed by a client observation",
+  uncertain: "No matching change was observed within two minutes",
+  rejected: "The request was refused",
+};
 function renderActivity() {
-  const target = $("activity-list");
+  const target = $("activity-list"), pills = $("activity-outcomes"),
+    audit = state.activityType === "audit";
+  let events = (audit ? state.activity.audit : state.activity.actions) || [];
   target.replaceChildren();
-  const events =
-    state.activityType === "audit"
-      ? state.activity.audit
-      : state.activity.actions;
-  if (!events?.length) {
-    target.append(node("p", "No activity recorded.", "empty"));
+  pills.replaceChildren();
+  pills.hidden = audit || !events.length;
+  if (!audit && events.length) {
+    const counts = {};
+    for (const event of events) counts[event.outcome] = (counts[event.outcome] || 0) + 1;
+    if (!counts[state.activityOutcome]) state.activityOutcome = "all";
+    for (const key of ["all", ...Object.keys(counts).sort()]) {
+      const button = node("button", key === "all" ? "All" : key.charAt(0).toUpperCase() + key.slice(1));
+      button.type = "button";
+      button.dataset.focusKey = "outcome:" + key;
+      button.setAttribute("aria-pressed", String(key === state.activityOutcome));
+      button.append(node("span", count(key === "all" ? events.length : counts[key])));
+      button.addEventListener("click", () => {
+        state.activityOutcome = key;
+        renderActivity();
+        refocus("outcome:" + key);
+      });
+      pills.append(button);
+    }
+    if (state.activityOutcome !== "all") events = events.filter((event) => event.outcome === state.activityOutcome);
+  }
+  if (!events.length) {
+    const empty = node("div", null, "empty-state");
+    empty.append(
+      node("strong", "No activity recorded"),
+      node("p", audit
+        ? "Settings and account changes appear here once an administrator makes one."
+        : "Actions taken from a torrent’s details appear here with their outcome."),
+    );
+    if (!audit) {
+      const open = node("button", "Go to torrents", "text-button");
+      open.type = "button";
+      open.addEventListener("click", () => navigate("torrents"));
+      empty.append(open);
+    }
+    target.append(empty);
     return;
   }
+  let current, group;
   for (const event of events) {
+    const day = localDay(event.at);
+    if (day !== current) {
+      current = day;
+      group = node("section", null, "panel activity-day");
+      group.append(node("h2", dayHeading(event.at)));
+      target.append(group);
+    }
     const row = node("div", null, "activity-row"),
+      mark = node("span", null, "activity-mark"),
       body = node("div");
-    if (state.activityType === "audit") {
+    if (audit) {
+      mark.append(icon("edit"));
       body.append(
-        node("strong", event.event.replaceAll(".", " ")),
+        node("strong", event.event.charAt(0).toUpperCase() + event.event.slice(1).replaceAll(".", " ")),
         node(
           "small",
           `${event.actor} · ${Object.entries(event.detail)
@@ -1263,29 +1562,37 @@ function renderActivity() {
       const torrent = state.status?.snapshot?.torrents.find(
         (r) => r.hash === event.torrent,
       );
+      mark.append(icon(actionIcons[event.action] || "minus"));
       body.append(
         node(
           "strong",
-          event.action.charAt(0).toUpperCase() + event.action.slice(1),
+          actionTitles[event.action] || event.action.charAt(0).toUpperCase() + event.action.slice(1),
         ),
-        node("small", torrent?.name || event.torrent),
       );
+      if (torrent) {
+        const open = node("button", torrent.name, "text-button");
+        open.type = "button";
+        open.dataset.focusKey = "activity:" + event.at + event.torrent;
+        open.addEventListener("click", () => openDetails(torrent));
+        body.append(open);
+      } else body.append(node("small", event.torrent));
     }
-    row.append(node("time", date(event.at, true)), body);
-    if (state.activityType === "actions")
+    row.append(node("time", localParts(event.at, { hour: "numeric", minute: "2-digit" })), mark, body);
+    if (!audit)
       row.append(
         badge(
           event.outcome,
           event.outcome === "confirmed"
             ? "good"
-            : ["uncertain", "pending"].includes(event.outcome)
+            : ["uncertain", "pending", "accepted"].includes(event.outcome)
               ? "warning"
               : event.outcome === "rejected"
                 ? "error"
                 : "",
         ),
+        node("small", outcomeNotes[event.outcome] || "", "activity-note"),
       );
-    target.append(row);
+    group.append(row);
   }
 }
 document.querySelectorAll("[data-activity]").forEach((b) =>
@@ -1606,8 +1913,21 @@ function settingsForm(key) {
     if (groups.has(group)) subsections.append(groups.get(group).parentElement);
   }
   if (groups.size) form.append(subsections);
-  const controls = node("div", null, "button-row"),
+  const controls = node("div", null, "button-row settings-actions"),
+    unsaved = node("span", "No unsaved changes", "settings-status"),
     save = node("button", "Save changes", "button primary");
+  const pending = () => {
+    let changed = 0;
+    for (const input of form.querySelectorAll("input[name],select[name]")) {
+      if (input.disabled) continue;
+      const value = inputValue(input, input.dataset.type);
+      if (JSON.stringify(value) !== input.dataset.original && (input.type !== "password" || value)) changed++;
+    }
+    unsaved.textContent = changed ? `${changed} unsaved change${changed === 1 ? "" : "s"}` : "No unsaved changes";
+    unsaved.classList.toggle("dirty", !!changed);
+  };
+  form.addEventListener("input", pending);
+  form.addEventListener("change", pending);
   save.type = "submit";
   save.disabled = section.fields.every((f) =>
     config.locked.includes(f[0]),
@@ -1638,7 +1958,7 @@ function settingsForm(key) {
       reset.disabled = false;
     }
   });
-  controls.append(save, reset);
+  controls.append(unsaved, reset, save);
   if (key === "client" || key === "sso") {
     const test = node(
       "button",
@@ -1780,8 +2100,15 @@ async function loadSettings() {
     ...Object.entries(settingSections),
     ["deployment", { title: "Deployment" }],
   ]) {
-    const button = node("button", section.title);
+    const button = node("button");
     button.type = "button";
+    button.append(node("strong", section.title), node("small", {
+      general: "Timezone, cadence and retention",
+      client: "Client connection",
+      optimizer: "Queue policy and tuning",
+      sso: "Identity provider sign-in",
+      deployment: "Read-only installation details",
+    }[key]));
     button.classList.toggle("selected", key === state.settingsTab);
     button.addEventListener("click", () => {
       state.settingsTab = key;
@@ -1804,21 +2131,28 @@ $("reload-settings").addEventListener("click", () =>
 async function loadUsers() {
   const result = await api("/api/v1/users");
   state.users = result.users;
-  const fragment = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment(),
+    roles = { admin: ["Administrator", "info"], operator: ["Operator", "good"], viewer: ["Viewer", ""] };
+  $("user-summary").textContent =
+    `Account access for this installation · ${count(result.users.length)} user${result.users.length === 1 ? "" : "s"}`;
+  for (const role of Object.keys(roles)) {
+    const total = result.users.filter((user) => user.role === role).length;
+    $("role-count-" + role).replaceChildren(node("strong", count(total)), total === 1 ? " user" : " users");
+  }
   for (const user of result.users) {
     const tr = node("tr"),
-      name = node("td", null, "name-cell");
-    name.append(
-      node("strong", user.display_name),
-      node("small", user.username),
-    );
+      name = node("td", null, "name-cell user-cell"),
+      identity = node("div"),
+      title = node("strong", user.display_name);
+    if (user.username === state.user?.username) title.append(node("span", "You", "badge"));
+    identity.append(title, node("small", user.username));
+    name.append(node("span", (user.display_name || user.username).slice(0, 1).toUpperCase(), "avatar"), identity);
     const role = node("td");
-    role.append(badge(user.role, user.role === "admin" ? "info" : ""));
-    const status = node("td");
-    status.append(
-      badge(user.active ? "Enabled" : "Disabled", user.active ? "good" : ""),
-    );
-    const actions = node("td"),
+    role.append(badge(...(roles[user.role] || [user.role, ""])));
+    const status = node("td"), dot = node("span", null, "user-status");
+    dot.append(node("span", null, "status-dot " + (user.active ? "good" : "")), user.active ? "Enabled" : "Disabled");
+    status.append(dot);
+    const actions = node("td", null, "numeric"),
       edit = node("button", "Edit", "button compact");
     edit.setAttribute("aria-label", "Edit " + user.username);
     edit.addEventListener("click", () => editUser(user));

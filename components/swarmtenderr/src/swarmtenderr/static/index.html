@@ -128,32 +128,98 @@
         <div class="content">
           <div id="notice" class="banner warning" role="status" hidden></div>
           <section id="view-overview" class="view">
+            <section id="attention" class="attention" aria-label="Needs attention" hidden></section>
+            <div class="live-grid">
+              <div class="live-side">
+                <section class="panel now-panel">
+                  <h2 class="eyebrow">Right now</h2>
+                  <div class="now-speeds">
+                    <div>
+                      <span class="detail-label">Download</span
+                      ><strong id="download-speed">—</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Upload</span
+                      ><strong id="upload-speed">—</strong>
+                    </div>
+                  </div>
+                  <div class="now-queue">
+                    <div class="now-queue-heading">
+                      <strong id="queue-total"></strong
+                      ><button class="text-button" data-open-view="torrents">
+                        View all
+                      </button>
+                    </div>
+                    <div id="queue-bar" class="queue-bar" role="img"></div>
+                    <div
+                      id="queue-summary"
+                      class="queue-legend"
+                      aria-label="Current queue"
+                    ></div>
+                  </div>
+                </section>
+                <section id="optimizer-panel" class="panel optimizer-panel" hidden>
+                  <div class="optimizer-heading">
+                    <h2 class="eyebrow">Optimizer</h2>
+                    <span id="optimizer-state" class="badge"></span>
+                  </div>
+                  <p id="optimizer-mode" class="optimizer-mode"></p>
+                  <p id="optimizer-explanation" class="optimizer-explanation"></p>
+                  <div id="optimizer-capacity" class="capacity-list"></div>
+                </section>
+              </div>
+              <section class="panel active-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Active downloads</h2>
+                    <p id="active-summary">Transfers currently receiving data</p>
+                  </div>
+                  <button class="text-button" data-open-view="torrents">
+                    View all torrents →
+                  </button>
+                </div>
+                <div id="active-rows" class="active-list"></div>
+                <p id="active-empty" class="empty" hidden>
+                  No downloads are currently receiving data.
+                </p>
+                <div id="waiting-block" class="waiting-block" hidden>
+                  <h3 class="eyebrow">Waiting</h3>
+                  <div id="waiting-rows"></div>
+                </div>
+              </section>
+            </div>
+            <div class="section-heading">
+              <h2>Completions</h2>
+              <button class="text-button" data-open-view="history">
+                View history →
+              </button>
+            </div>
             <div class="metric-grid">
               <article class="metric">
-                <span>Completed today</span
-                ><strong id="completed-today">—</strong
-                ><small id="today-note">Observed torrents</small>
+                <div>
+                  <span>Completed today</span
+                  ><strong id="completed-today">—</strong
+                  ><small id="today-note">Observed torrents</small>
+                </div>
+                <div id="spark-today" class="sparkline" role="img"></div>
               </article>
               <article class="metric">
-                <span>Completed this month</span
-                ><strong id="completed-month">—</strong
-                ><small id="month-note">Observed torrents</small>
+                <div>
+                  <span>Completed this month</span
+                  ><strong id="completed-month">—</strong
+                  ><small id="month-note">Observed torrents</small>
+                </div>
+                <div id="spark-month" class="sparkline" role="img"></div>
               </article>
               <article class="metric">
-                <span>Payload this month</span
-                ><strong id="payload-month">—</strong
-                ><small>Completed wanted data</small>
-              </article>
-              <article class="metric">
-                <span>Download speed</span><strong id="download-speed">—</strong
-                ><small id="upload-speed">Upload —</small>
+                <div>
+                  <span>Payload this month</span
+                  ><strong id="payload-month">—</strong
+                  ><small id="payload-note">Completed wanted data</small>
+                </div>
+                <div id="spark-payload" class="sparkline" role="img"></div>
               </article>
             </div>
-            <div
-              id="queue-summary"
-              class="queue-summary"
-              aria-label="Current queue"
-            ></div>
             <div class="chart-grid">
               <article class="panel chart-panel">
                 <div class="panel-heading">
@@ -171,12 +237,18 @@
                     ><button data-chart-period="monthly">Monthly</button>
                   </div>
                 </div>
-                <div
-                  id="completion-chart"
-                  class="chart"
-                  role="img"
-                  aria-label="Completed torrents by period"
-                ></div>
+                <div class="completion-body">
+                  <div
+                    id="completion-chart"
+                    class="chart"
+                    role="img"
+                    aria-label="Completed torrents by period"
+                  ></div>
+                  <aside id="category-panel" class="category-panel" hidden>
+                    <h3 class="eyebrow">Top categories this month</h3>
+                    <div id="category-breakdown" class="category-breakdown"></div>
+                  </aside>
+                </div>
                 <div id="completion-legend" hidden></div>
               </article>
               <article class="panel chart-panel">
@@ -199,106 +271,46 @@
                 <div id="transfer-legend" hidden></div>
               </article>
             </div>
-            <section id="category-panel" class="panel" hidden>
-              <div class="panel-heading">
-                <div>
-                  <h2>Top completion categories</h2>
-                  <p>This calendar month · up to eight categories</p>
-                </div>
-                <button class="text-button" data-open-view="history">
-                  View history →
-                </button>
-              </div>
-              <div id="category-breakdown" class="category-breakdown"></div>
-            </section>
-            <section id="optimizer-panel" class="panel" hidden>
-              <div class="panel-heading">
-                <div>
-                  <h2>Optimizer</h2>
-                  <p id="optimizer-mode"></p>
-                </div>
-                <span id="optimizer-state" class="badge"></span>
-              </div>
-              <p id="optimizer-explanation" class="optimizer-explanation"></p>
-              <div id="optimizer-capacity" class="capacity-grid"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>Active downloads</h2>
-                  <p>Transfers currently receiving data</p>
-                </div>
-                <button class="text-button" data-open-view="torrents">
-                  View all torrents →
-                </button>
-              </div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Progress</th>
-                      <th>Download</th>
-                      <th>Remaining</th>
-                      <th>ETA</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="active-rows"></tbody>
-                </table>
-              </div>
-              <p id="active-empty" class="empty" hidden>
-                No downloads are currently receiving data.
-              </p>
-            </section>
             <p id="coverage-note" class="footnote"></p>
           </section>
           <section id="view-torrents" class="view" hidden>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>Torrents <span id="table-count" class="count"></span></h2>
-                  <p id="torrent-summary"></p>
-                </div>
-                <div class="toolbar">
-                  <input
-                    id="torrent-search"
-                    type="search"
-                    placeholder="Search torrents"
-                    aria-label="Search torrents"
-                  /><select id="torrent-category" aria-label="Filter category">
-                    <option value="">All categories</option></select
-                  ><select id="torrent-filter" aria-label="Filter state">
-                    <option value="all">All states</option>
-                    <option value="downloading">Downloading</option>
-                    <option value="queued">Queued</option>
-                    <option value="stalled">Stalled</option>
-                    <option value="metadata">Metadata</option>
-                    <option value="seeding">Seeding</option>
-                    <option value="stopped">Stopped</option>
-                    <option value="complete">Complete</option></select
-                  ><select id="torrent-sort" aria-label="Sort torrents">
-                    <option value="rank">Optimizer rank</option>
-                    <option value="priority">Queue position</option>
-                    <option value="speed">Download speed</option>
-                    <option value="progress">Progress</option>
-                    <option value="name">Name</option>
-                  </select>
-                </div>
+            <div class="view-toolbar">
+              <div
+                id="torrent-states"
+                class="pills"
+                role="group"
+                aria-label="Filter by state"
+              ></div>
+              <div class="toolbar">
+                <input
+                  id="torrent-search"
+                  type="search"
+                  placeholder="Search torrents"
+                  aria-label="Search torrents"
+                /><select id="torrent-category" aria-label="Filter category">
+                  <option value="">All categories</option></select
+                ><select id="torrent-sort" aria-label="Sort torrents">
+                  <option value="rank">Sort: optimizer rank</option>
+                  <option value="priority">Sort: queue position</option>
+                  <option value="speed">Sort: download speed</option>
+                  <option value="progress">Sort: progress</option>
+                  <option value="name">Sort: name</option>
+                </select>
               </div>
+            </div>
+            <section class="panel">
               <div class="table-scroll">
-                <table>
+                <table class="torrent-table">
                   <thead>
                     <tr>
+                      <th>Rank</th>
                       <th>Name / category</th>
                       <th>Status</th>
                       <th>Progress</th>
-                      <th>Download</th>
-                      <th>Upload</th>
-                      <th>ETA</th>
-                      <th>Seeds / peers</th>
-                      <th>Queue</th>
-                      <th>Optimizer rank</th>
+                      <th class="numeric">Speed</th>
+                      <th class="numeric">ETA</th>
+                      <th class="numeric">Seeds / peers</th>
+                      <th class="numeric">Queue</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -321,54 +333,64 @@
             </section>
           </section>
           <section id="view-history" class="view" hidden>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>Completion history</h2>
-                  <p>
-                    Persistent records, including torrents removed from the
-                    client
-                  </p>
+            <div class="view-toolbar">
+              <p class="muted">
+                Persistent records, including torrents removed from the client
+              </p>
+              <a id="export-history" class="button" href="/api/v1/completions.csv"
+                >Export CSV</a
+              >
+            </div>
+            <div id="history-totals" class="metric-grid history-totals"></div>
+            <form id="history-filter" class="filter-form panel">
+              <label
+                >Search<input
+                  id="history-search"
+                  type="search"
+                  placeholder="Torrent name" /></label
+              ><label
+                >Category<input
+                  id="history-category"
+                  placeholder="Any category" /></label
+              ><label class="checkbox-filter"
+                ><input
+                  id="history-uncategorized"
+                  type="checkbox"
+                />Uncategorized only</label
+              >
+              <div class="range-filter">
+                <span>Date range</span>
+                <div
+                  id="history-range"
+                  class="segmented"
+                  role="group"
+                  aria-label="Date range"
+                >
+                  <button type="button" data-range="today">Today</button
+                  ><button type="button" data-range="week">7 days</button
+                  ><button type="button" data-range="month">This month</button
+                  ><button type="button" data-range="all">All time</button
+                  ><button type="button" data-range="custom">Custom</button>
                 </div>
-                <a
-                  id="export-history"
-                  class="button"
-                  href="/api/v1/completions.csv"
-                  >Export CSV</a
-                >
               </div>
-              <form id="history-filter" class="filter-form">
-                <label
-                  >Search<input
-                    id="history-search"
-                    type="search"
-                    placeholder="Torrent name" /></label
-                ><label
-                  >Category<input
-                    id="history-category"
-                    placeholder="Any category" /></label
-                ><label class="checkbox-filter"
-                  ><input
-                    id="history-uncategorized"
-                    type="checkbox"
-                  />Uncategorized only</label
-                >
-                <label>From<input id="history-from" type="date" /></label
-                ><label>Through<input id="history-to" type="date" /></label
-                ><button class="button" type="submit">Apply filters</button>
-              </form>
+              <label class="range-custom"
+                >From<input id="history-from" type="date" /></label
+              ><label class="range-custom"
+                >Through<input id="history-to" type="date" /></label
+              ><button class="button" type="submit">Apply filters</button>
+            </form>
+            <section class="panel">
               <div class="table-scroll">
-                <table>
+                <table id="history-table" class="history-table">
                   <thead>
                     <tr>
+                      <th>Completed</th>
                       <th>Torrent</th>
                       <th>Category</th>
-                      <th>Completed</th>
-                      <th>Payload</th>
-                      <th>Source</th>
+                      <th class="numeric">Payload</th>
+                      <th class="numeric">Source</th>
                     </tr>
                   </thead>
-                  <tbody id="history-rows"></tbody>
                 </table>
               </div>
               <p id="history-empty" class="empty" hidden>
@@ -388,24 +410,25 @@
             <p id="history-coverage" class="footnote"></p>
           </section>
           <section id="view-activity" class="view" hidden>
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <h2>Activity</h2>
-                  <p>
-                    Client requests, confirmations and administrative changes
-                  </p>
-                </div>
-                <div class="segmented" role="group" aria-label="Activity type">
-                  <button class="selected" data-activity="actions">
-                    Torrent actions</button
-                  ><button class="admin-only" data-activity="audit">
-                    Administration
-                  </button>
-                </div>
+            <div class="view-toolbar">
+              <p class="muted">
+                Client requests, confirmations and administrative changes
+              </p>
+              <div class="segmented" role="group" aria-label="Activity type">
+                <button class="selected" data-activity="actions">
+                  Torrent actions</button
+                ><button class="admin-only" data-activity="audit">
+                  Administration
+                </button>
               </div>
-              <div id="activity-list" class="activity-list"></div>
-            </section>
+            </div>
+            <div
+              id="activity-outcomes"
+              class="pills"
+              role="group"
+              aria-label="Filter by outcome"
+            ></div>
+            <div id="activity-list" class="activity-list"></div>
           </section>
           <section id="view-settings" class="view" hidden>
             <div id="settings-conflict" class="banner warning" hidden>
@@ -424,16 +447,40 @@
             </div>
           </section>
           <section id="view-users" class="view" hidden>
-            <section class="panel">
-              <div class="panel-heading">
+            <div class="view-toolbar">
+              <p id="user-summary" class="muted">
+                Account access for this installation
+              </p>
+              <button id="new-user" class="button primary">Add user</button>
+            </div>
+            <div class="metric-grid role-guide">
+              <article class="metric role-card">
                 <div>
-                  <h2>Users</h2>
-                  <p>Account access for this installation</p>
+                  <span class="badge info">Administrator</span
+                  ><span id="role-count-admin" class="role-count"></span>
                 </div>
-                <button id="new-user" class="button primary">Add user</button>
-              </div>
+                <p>Manages configuration, accounts and torrent controls.</p>
+              </article>
+              <article class="metric role-card">
+                <div>
+                  <span class="badge good">Operator</span
+                  ><span id="role-count-operator" class="role-count"></span>
+                </div>
+                <p>
+                  Monitors the installation and uses permitted torrent controls.
+                </p>
+              </article>
+              <article class="metric role-card">
+                <div>
+                  <span class="badge">Viewer</span
+                  ><span id="role-count-viewer" class="role-count"></span>
+                </div>
+                <p>Reads status, statistics and history.</p>
+              </article>
+            </div>
+            <section class="panel">
               <div class="table-scroll">
-                <table>
+                <table class="user-table">
                   <thead>
                     <tr>
                       <th>User</th>
@@ -448,19 +495,6 @@
                 </table>
               </div>
             </section>
-            <div class="role-guide">
-              <p>
-                <strong>Administrator</strong> manages configuration, accounts
-                and torrent controls.
-              </p>
-              <p>
-                <strong>Operator</strong> monitors the installation and uses
-                permitted torrent controls.
-              </p>
-              <p>
-                <strong>Viewer</strong> reads status, statistics and history.
-              </p>
-            </div>
           </section>
         </div>
       </main>
