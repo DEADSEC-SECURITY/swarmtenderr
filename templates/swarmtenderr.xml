@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>swarmtenderr</Name>
+  <Repository>elgon2003/swarmtenderr:0.7.0</Repository>
+  <Registry>https://hub.docker.com/r/elgon2003/swarmtenderr</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Beta>true</Beta>
+  <Category>Tools:Utilities Downloaders</Category>
+  <Project>https://github.com/DEADSEC-SECURITY/swarmtenderr</Project>
+  <Support>https://github.com/DEADSEC-SECURITY/swarmtenderr/issues</Support>
+  <TemplateURL>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/templates/swarmtenderr.xml</TemplateURL>
+  <ReadMe>https://github.com/DEADSEC-SECURITY/swarmtenderr/blob/main/docs/unraid.md</ReadMe>
+  <Icon>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/components/swarmtenderr/src/swarmtenderr/static/logo.svg</Icon>
+  <Overview>Understand and control your qBittorrent queue. Live statistics, explainable ranking, bounded discovery trials, audited manual actions, local accounts and Authentik-compatible OIDC. SQLite is included; PostgreSQL is optional. One installation manages one qBittorrent 5 client. Prepare the private bootstrap-password file and enter your exact browser-facing Public URL before starting. Start in Observe mode. This template is awaiting native Unraid acceptance; see the installation guide.</Overview>
+  <Requires>qBittorrent 5; writable appdata owned by UID/GID 10001; private admin-password file. See ReadMe before installation.</Requires>
+  <WebUI>http://[IP]:[PORT:8787]/</WebUI>
+  <License>MIT</License>
+  <ExtraSearchTerms>qbittorrent arr queue optimizer torrents authentik sqlite postgres</ExtraSearchTerms>
+  <ExtraParams>--read-only --tmpfs /tmp:rw,nosuid,nodev,size=64m,mode=1777 --cap-drop=ALL --security-opt=no-new-privileges:true --pids-limit=128 --memory=256m --cpus=0.5</ExtraParams>
+  <Screenshot>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/docs/media/ranking.png</Screenshot>
+  <Config Name="Web UI port" Target="8787" Default="8788" Mode="tcp" Description="Host port for the dashboard. Keep Public URL in sync if this changes." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/swarmtenderr" Mode="rw" Description="Persistent SQLite database and runtime encryption key. Owner must be UID/GID 10001. Back up this directory." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Private secret directory" Target="/run/secrets/swarmtenderr" Default="/mnt/user/appdata/swarmtenderr-secrets" Mode="ro" Description="Read-only directory containing admin-password and any optional PostgreSQL connection file. Follow the private-file preparation in ReadMe." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Public URL (required)" Target="SWARMTENDERR_PUBLIC_URL" Default="" Description="Exact origin used in your browser, for example http://192.0.2.10:8788 or your HTTPS reverse-proxy origin. Enter your real server address; no trailing path." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Bootstrap password file" Target="SWARMTENDERR_PASSWORD_FILE" Default="/run/secrets/swarmtenderr/admin-password" Description="Private initial administrator password file, at least 12 characters. Its contents never belong in this form or template." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="PostgreSQL connection file (optional)" Target="SWARMTENDERR_DATABASE_URL_FILE" Default="" Description="Leave empty for SQLite. To use your PostgreSQL database, place postgres-url in the private secret directory and set this to /run/secrets/swarmtenderr/postgres-url. See the PostgreSQL instructions in ReadMe." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

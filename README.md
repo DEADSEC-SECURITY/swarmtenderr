@@ -1,14 +1,71 @@
 # Swarmtenderr
 
-A self-hosted qBittorrent monitor and queue optimizer with live updates, completion
-statistics, local accounts, Authentik-compatible OIDC, and editable settings.
-SQLite is the default; an existing PostgreSQL database is supported by the same
-image. One installation manages one client and one set of users.
+Swarmtenderr helps you understand and control your qBittorrent queue. Inspect a
+torrent to see its optimizer rank, the evidence affecting its score, capacity
+gates, retry cooldowns and observed metadata attempts. Watch transfers and daily
+or monthly completions update live.
 
-Release 0.7.0 redesigns the live dashboard and torrent inspector, with download
-stages, ranking conditions, metadata timelines, completion date presets and
-interactive mini charts. Settings retain aligned, non-collapsible subsections.
-Manual controls remain independent of automatic optimization.
+[Try the demo](#try-the-demo) · [Why is it queued?](docs/why-a-torrent-is-queued.md) ·
+[Install](#install) · [Unraid beta](docs/unraid.md) ·
+[Share installation feedback](https://github.com/DEADSEC-SECURITY/swarmtenderr/issues/new?template=installation-feedback.yml)
+
+![Torrent inspector with ranking conditions, using synthetic demo data](docs/media/ranking.png)
+
+## Understand a queued torrent
+
+Native queue position and optimizer plan rank are separate. The inspector shows
+why work is waiting and how measured throughput, remaining work and ranking
+factors influence its weighted cost. Unknown metadata stays **Not scored**.
+Start in **Observe** mode to inspect recommendations before enabling enforcement.
+
+Read [Why is this torrent still queued?](docs/why-a-torrent-is-queued.md) for a
+practical walkthrough of conditions, evidence tiers and metadata discovery.
+
+## Try the demo
+
+With Docker running, start the published image with synthetic data:
+
+```sh
+docker run --rm --name swarmtenderr-demo \
+  -p 127.0.0.1:8788:8787 \
+  --read-only --tmpfs /tmp \
+  --tmpfs /data:uid=10001,gid=10001,mode=0700 \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  -e SWARMTENDERR_DEMO=true \
+  -e SWARMTENDERR_PUBLIC_URL=http://localhost:8788 \
+  elgon2003/swarmtenderr:0.7.0
+```
+
+Open <http://localhost:8788> and sign in with **demo / demo**. Inspect the queue,
+use chart tooltips and history drill-down, and try settings. The demo cannot
+change a real torrent client. Press Ctrl+C to stop it; this disposable demo's
+state is discarded. If port 8788 is in use, change both the published host port
+and `SWARMTENDERR_PUBLIC_URL` to the same available port.
+
+## Tune and control your queue
+
+- Always-visible ranking, discovery and capacity settings, with hours/minutes/seconds inputs.
+- Audited pause/resume, move to top, reannounce, force start and return to queue for operators and administrators.
+- Local accounts and roles, plus Authentik-compatible OpenID Connect sign-in.
+- SQLite by default, optional PostgreSQL, Docker images for amd64/arm64 and a reusable Terraform module.
+
+One installation manages one qBittorrent 5 client. The optimizer does not delete
+files or change upload policy. It does not guarantee a faster swarm or a working
+source; [the ranking contract](docs/ranking.md) explains what the evidence can show.
+
+## Help test a new installation
+
+Try Observe mode on your own system and send an
+[installation report](https://github.com/DEADSEC-SECURITY/swarmtenderr/issues/new?template=installation-feedback.yml)
+with your platform, image version, database and what worked or failed. The
+[Unraid beta template](docs/unraid.md) particularly needs native Unraid install,
+edit/update and backup feedback. See [Contributing](CONTRIBUTING.md).
+
+This project was mostly developed with AI under its maintainer's supervision.
+The maintainer is a software developer who reviewed the work and tested it on
+their own system. Release checks also exercise both database engines, real
+qBittorrent transfers and native amd64/arm64 builds. AI assistance does not
+replace review, testing or responsibility for a contribution.
 
 ## Install
 
@@ -19,7 +76,7 @@ Terraform, shell arguments, source or image layers.
 
 ```sh
 export SWARMTENDERR_PASSWORD_PATH=/absolute/private/admin-password
-export SWARMTENDERR_IMAGE=elgon2003/swarmtenderr@sha256:YOUR_ACCEPTED_DIGEST
+export SWARMTENDERR_IMAGE=elgon2003/swarmtenderr:0.7.0
 docker compose -f components/swarmtenderr/config/compose.yaml up -d
 ```
 
@@ -28,6 +85,9 @@ Settings → qBittorrent. Saving and testing a connection are separate operation
 failed credentials never produce a successful connection result. Use a TLS reverse
 proxy outside localhost and set `SWARMTENDERR_PUBLIC_URL` to the exact browser
 origin. Preserve WebSocket upgrades and the Origin header.
+
+For an immutable deployment, the accepted 0.7.0 image is
+`elgon2003/swarmtenderr@sha256:10b15fe8b55905a1b7eb0bdf22d0465a409df488987109ff34d3c9f309fdadab`.
 
 Optional Compose overlays configure [a client secret file](components/swarmtenderr/config/compose.client-secret.yaml),
 [PostgreSQL](components/swarmtenderr/config/compose.postgres.yaml),
