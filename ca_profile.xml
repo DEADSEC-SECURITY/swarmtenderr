@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommunityApplications>
+  <Profile>Swarmtenderr is an MIT-licensed qBittorrent dashboard and queue manager. This repository maintains its Docker image and Unraid template. Report installation problems and reproducible bugs through GitHub Issues.</Profile>
+  <Icon>https://raw.githubusercontent.com/DEADSEC-SECURITY/swarmtenderr/main/components/swarmtenderr/src/swarmtenderr/static/logo.svg</Icon>
+  <WebPage>https://github.com/DEADSEC-SECURITY/swarmtenderr</WebPage>
+  <Forum>https://github.com/DEADSEC-SECURITY/swarmtenderr/issues</Forum>
+</CommunityApplications>

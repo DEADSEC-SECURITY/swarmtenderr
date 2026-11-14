@@ -1,0 +1,59 @@
+name: Installation feedback
+description: Tell us how Swarmtenderr works on your own system.
+title: "Installation feedback: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying Swarmtenderr. Remove passwords, database URLs, cookies, private hostnames and torrent names/hashes before posting. A screenshot of the synthetic demo is safe to share; your real queue may contain private data.
+  - type: input
+    id: version
+    attributes:
+      label: Swarmtenderr version or image digest
+      placeholder: "0.7.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Host OS and processor architecture
+      placeholder: "Unraid version / Debian version, amd64 or arm64"
+    validations:
+      required: true
+  - type: dropdown
+    id: route
+    attributes:
+      label: Installation method
+      options:
+        - Docker Compose
+        - Docker run
+        - Terraform module
+        - Unraid beta template
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite
+        - PostgreSQL
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: qBittorrent version and optimization mode
+      placeholder: "qBittorrent 5.x; Observe or Enforce"
+  - type: textarea
+    id: results
+    attributes:
+      label: What worked and what needs improvement
+      description: Include install time, sign-in, live updates, ranking explanations and settings. If you tested Unraid, include restart, edit/update and backup results.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce any problem
+      description: Describe expected and actual behavior. Share only redacted error messages; do not attach database files or private backups.
