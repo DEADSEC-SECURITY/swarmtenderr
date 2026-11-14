@@ -838,6 +838,8 @@ function openDetails(row) {
   $("action-result").textContent = "";
   renderDetails();
   $("details-dialog").showModal();
+  $("details-dialog").scrollTop = 0;
+  $("details-dialog").querySelector(".detail-body").scrollTop = 0;
 }
 function renderDetails() {
   if (!state.selectedTorrent) return;
@@ -846,23 +848,109 @@ function renderDetails() {
     ),
     row = current || state.selectedTorrent;
   state.selectedTorrent = row;
-  $("detail-name").textContent = row.name;
-  const [label, kind] = classification(row);
+  const [label, kind] = classification(row),
+    complete = row.progress >= 1,
+    unknown =
+      !complete &&
+      (row.ranking ? row.ranking.metadata.known === false : row.state === "metaDL"),
+    nameless = !row.name || row.name === row.hash;
+  $("detail-name").textContent = nameless ? row.hash : row.name;
+  $("detail-name").classList.toggle("mono", nameless);
+  $("detail-hash").textContent = row.hash;
+  $("detail-hash").hidden = nameless;
+  $("detail-copy").hidden = !navigator.clipboard;
+  $("detail-copy").textContent = "Copy hash";
   $("detail-state").replaceChildren(badge(label, kind));
+  $("detail-note").hidden = !unknown;
+  $("detail-note").textContent = unknown
+    ? "Metadata has not arrived yet. " +
+      (nameless ? "Only the info hash is known; name, size" : "Size") +
+      " and remaining work appear once a peer supplies it."
+    : "";
+  const stage = complete ? 3 : unknown ? 1 : 2,
+    stages = $("detail-stages");
+  stages.replaceChildren();
+  ["Added to queue", "Metadata", "Download", "Complete"].forEach((text, i) => {
+    const done = complete || i < stage,
+      item = node(
+        "li",
+        null,
+        done ? "done" : i === stage ? "current " + (unknown ? "warning" : kind) : "",
+      ),
+      dot = node("span", null, "stage-dot");
+    if (done) dot.append(icon("check"));
+    item.append(dot, node("strong", text));
+    if (i === stage) {
+      item.setAttribute("aria-current", "step");
+      item.append(
+        node(
+          "small",
+          unknown
+            ? row.state === "metaDL"
+              ? "Fetching now"
+              : "Not acquired yet"
+            : label,
+        ),
+      );
+    }
+    stages.append(item);
+  });
+  $("detail-percent").textContent = (row.progress * 100).toFixed(1) + "%";
+  $("detail-progress").value = row.progress;
+  $("detail-remaining").textContent = complete
+    ? `${bytes(row.size)} · Complete`
+    : unknown
+      ? "Size, remaining and ETA unknown until metadata arrives"
+      : `${bytes(row.remaining_bytes)} left of ${bytes(row.size)} · ETA ${eta(row.eta_seconds)}`;
+  const ranking = row.ranking,
+    tiles = $("detail-tiles"),
+    tile = (title, value, sub) => {
+      const item = node("div", null, "detail-tile"),
+        figure = node("div", null, "tile-value");
+      figure.append(...[].concat(value));
+      item.append(node("span", title, "detail-label"), figure);
+      if (sub) item.append(...[].concat(sub).map((n) => (typeof n === "string" ? node("small", n) : n)));
+      tiles.append(item);
+    };
+  tiles.replaceChildren();
+  if (ranking?.rank) {
+    const track = node("div", null, "rank-track"),
+      marker = node("span");
+    marker.style.left =
+      (ranking.candidate_count > 1
+        ? ((ranking.rank - 1) / (ranking.candidate_count - 1)) * 100
+        : 0) + "%";
+    track.append(marker);
+    tile(
+      "Plan rank",
+      [node("strong", "#" + count(ranking.rank), "accent"), node("span", "of " + count(ranking.candidate_count))],
+      [track, ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
+    );
+  } else
+    tile(
+      "Plan rank",
+      node("strong", "—"),
+      ranking ? "Outside the eligible plan" : complete ? "Complete" : "Not reported",
+    );
+  tile(
+    "Queue position",
+    node("strong", row.priority < 0 ? "—" : count(row.priority)),
+    row.priority < 0 ? "Outside download queue" : "Native client queue",
+  );
+  tile(
+    "Seeds / peers",
+    node("strong", `${count(row.seeds)} / ${count(row.peers)}`),
+    ranking
+      ? `Connected · ${count(ranking.signals.seeders)} / ${count(ranking.signals.known_peers)} reported`
+      : "Connected",
+  );
+  const speed = (name, text, value) => {
+    const line = node("div", null, "tile-speed");
+    line.append(icon(name), node("strong", bytes(value) + "/s"), node("span", text, "visually-hidden"));
+    return line;
+  };
+  tile("Transfer", [speed("down", "download", row.download_speed), speed("up", "upload", row.upload_speed)]);
   definitions($("detail-values"), [
-    ["Progress", (row.progress * 100).toFixed(1) + "%"],
-    ["Size", row.ranking?.metadata.known === false ? "Unknown until metadata arrives" : bytes(row.size)],
-    ["Remaining", row.ranking?.metadata.known === false ? "Unknown until metadata arrives" : bytes(row.remaining_bytes)],
-    [
-      "Download / upload",
-      bytes(row.download_speed) + "/s / " + bytes(row.upload_speed) + "/s",
-    ],
-    ["Seeds / peers", `${row.seeds} / ${row.peers}`],
-    [
-      "Queue position",
-      row.priority < 0 ? "Outside download queue" : row.priority,
-    ],
-    ["ETA", row.progress >= 1 ? "Complete" : eta(row.eta_seconds)],
     ...(row.trial_until > Date.now() / 1000
       ? [["Trial ends", date(row.trial_until, true)]]
       : []),
@@ -870,6 +958,7 @@ function renderDetails() {
       ? [["Retry after", date(row.cooldown_until, true)]]
       : []),
   ]);
+  $("detail-values").hidden = !$("detail-values").children.length;
   const policy = state.status?.snapshot?.optimizer?.connected;
   $("detail-policy").hidden = !policy || !!row.ranking;
   $("detail-policy").textContent = policy
@@ -911,12 +1000,65 @@ function renderDetails() {
     reason = state.status.demo
       ? "Client operations are disabled for demo data."
       : "Torrent controls are disabled by this installation’s settings.";
-  $("control-note").textContent =
+  $("control-note").replaceChildren(
+    ...(reason ? [icon("lock")] : []),
     reason ||
-    "Actions are recorded before submission. The next observation confirms supported state changes.";
+      "Actions are recorded before submission. The next observation confirms supported state changes.",
+  );
   document
     .querySelectorAll("[data-action]")
     .forEach((b) => (b.disabled = !!reason));
+}
+const iconPaths = {
+  check: "M3 8.4l3.1 3.1L13 4.6",
+  minus: "M4 8h8",
+  clock: "M8 4.6v3.7l2.3 1.5",
+  alert: "M8 4v4.6M8 11.6v.2",
+  down: "M8 2.5v10M4 8.8l4 4 4-4",
+  up: "M8 13.5v-10M4 7.2l4-4 4 4",
+  lock: "M4 7.5h8v6H4zM5.8 7.5V5.4a2.2 2.2 0 0 1 4.4 0v2.1",
+};
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"),
+    path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "icon");
+  path.setAttribute("d", iconPaths[name]);
+  svg.append(path);
+  return svg;
+}
+const blockerTones = {
+  metadata: "warning", hold: "warning", capacity: "warning", metadata_slot: "warning", complete: "good",
+  probe_cooldown: "info", metadata_cooldown: "info", swarm_cooldown: "info", ranking_cooldown: "info",
+};
+const metadataOutcomes = {
+  metadata: "Metadata acquired",
+  no_metadata: "Window ended without metadata",
+  unobserved: "Insufficient continuous observation",
+};
+function metadataTimeline(ranking) {
+  const metadata = ranking.metadata, now = Date.now() / 1000, events = [];
+  const add = (at, text) => { if (at > 0) events.push({ at, text }); };
+  add(metadata.tracking_since, "Tracking began");
+  add(metadata.last_at, metadataOutcomes[metadata.last_outcome] || "Attempt ended");
+  add(metadata.last_probe_at, "Last probe began");
+  if (metadata.trial_until > now) add(metadata.trial_until, "Trial ends");
+  if (metadata.retry_at > now) add(metadata.retry_at, "Metadata retry");
+  for (const blocker of ranking.blockers)
+    if (blocker.until > now && blocker.code !== "metadata_cooldown")
+      add(blocker.until, blocker.code === "ranking_cooldown" ? "Reshuffle eligible" : blocker.label + " ends");
+  events.push({ at: now, now: true, text: metadata.active
+    ? `Observing · ${count(Math.round(metadata.active_seconds))} seconds so far` : "Not observing" });
+  events.sort((a, b) => a.at - b.at);
+  const list = node("ol", null, "metadata-timeline");
+  for (const event of events) {
+    const item = node("li", null, event.now ? "now" + (metadata.active ? " active" : "") : event.at < now ? "past" : "future");
+    item.append(node("span", null, "timeline-dot"), node("time", event.now ? "Now" : date(event.at)), node("span", event.text));
+    if (event.now) item.setAttribute("aria-current", "time");
+    list.append(item);
+  }
+  return list;
 }
 function renderRanking(row) {
   const target = $("detail-ranking"), ranking = row.ranking;
@@ -935,26 +1077,38 @@ function renderRanking(row) {
   target.append(node("p", note, "muted"));
   if (engine?.stale || Date.now() / 1000 - ranking.observed_at > 120)
     target.append(node("p", "Stale observation. These are the last recorded reasons; waiting for the guard to report again.", "ranking-warning"));
-  const summary = node("dl", null, "definition-grid");
-  definitions(summary, [
-    ["Plan rank", ranking.rank ? `#${count(ranking.rank)} of ${count(ranking.candidate_count)}` : "Outside the eligible plan"],
-    ["Completion rank", ranking.score_rank ? `#${count(ranking.score_rank)} before trial reservations` : "Not scored"],
-    ["Selection", ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
-    ["Policy", ranking.policy], ["Evaluated", date(ranking.observed_at, true)],
-  ]);
-  target.append(summary);
-  if (ranking.selection_reason) target.append(node("p", ranking.selection_reason, "ranking-selection"));
-  target.append(node("h4", ranking.selected_rank ? "Selection conditions" : row.state === "queuedDL" ? "Why it is queued" : "Priority conditions"));
+  const grid = node("div", null, "ranking-grid"), conditions = node("div"), plan = node("aside", null, "ranking-plan");
+  conditions.append(node("h4", ranking.selected_rank ? "Selection conditions" : row.state === "queuedDL" ? "Why it is queued" : "Priority conditions"));
   const reasons = node("ul", null, "ranking-reasons");
-  for (const blocker of ranking.blockers) {
-    const item = node("li");
-    item.append(node("strong", blocker.label), node("p", blocker.detail));
-    if (blocker.until > Date.now() / 1000) item.append(node("small", "Eligible after " + date(blocker.until, true)));
+  const reason = (label, detail, tone = "", tag = "") => {
+    const item = node("li", null, tone), mark = node("span", null, "reason-mark"), body = node("div"), heading = node("div", null, "reason-heading");
+    mark.append(icon({ warning: "alert", good: "check", info: "clock" }[tone] || "minus"));
+    heading.append(node("strong", label));
+    if (tag) heading.append(node("small", tag));
+    body.append(heading);
+    if (detail) body.append(node("p", detail));
+    item.append(mark, body);
     reasons.append(item);
-  }
-  if (!ranking.blockers.length) reasons.append(node("li", ranking.reason));
-  else if (!ranking.selected_rank && ranking.rank) reasons.append(node("li", ranking.reason));
-  target.append(reasons);
+  };
+  for (const blocker of ranking.blockers)
+    reason(blocker.label, blocker.detail, blockerTones[blocker.code],
+      blocker.until > Date.now() / 1000 ? "Eligible after " + date(blocker.until, true) :
+      blocker.code === "metadata" ? "Blocks scoring" : "");
+  if (!ranking.blockers.length || (!ranking.selected_rank && ranking.rank)) reason(ranking.reason, "");
+  conditions.append(reasons);
+  const summary = node("dl");
+  definitions(summary, [
+    ["Policy", ranking.policy],
+    ["Selection", ranking.selected_rank ? `Selected slot ${ranking.selected_rank}` : ranking.decision],
+    ...(ranking.selection_reason ? [["Reason", ranking.selection_reason]] : []),
+    ["Completion rank", ranking.score_rank ? `#${count(ranking.score_rank)} before trial reservations` : "Not scored"],
+    ["Evaluated", date(ranking.observed_at, true)],
+  ]);
+  plan.append(node("h4", "Optimizer plan"), summary);
+  if (!ranking.score && !ranking.metadata.known)
+    plan.append(node("p", "No completion score until metadata supplies the remaining size. A guessed score would be misleading.", "muted"));
+  grid.append(conditions, plan);
+  target.append(grid);
   if (ranking.score) {
     const score = ranking.score, format = (value) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value) + " s";
     target.append(node("h4", "Completion score · lower ranks first"), node("p",
@@ -971,27 +1125,34 @@ function renderRanking(row) {
       ["Remaining work", bytes(score.remaining_bytes)], ["Evidence tier", score.proven ? "Useful measured throughput" : "Untested / below useful speed"],
       ["Complete source", score.viable ? "Confirmed by current evidence" : "Not confirmed"]]);
     target.append(evidence, node("p", "More remaining work or a lower speed raises the base cost. Age, completion and remaining-size boosts reduce it. Seeders inform the speed estimate; popularity and peers choose discovery trials, not extra score points.", "muted"));
-  } else if (!ranking.metadata.known) target.append(node("p", "No completion score until metadata supplies the remaining size. A guessed score would be misleading.", "muted"));
+  }
   const metadata = ranking.metadata;
   const metadataSection = node("details", null, "metadata-history");
   metadataSection.open = metadataOpen ?? !metadata.known;
   metadataSection.append(node("summary", "Metadata & discovery"));
-  const history = node("dl", null, "definition-grid");
-  const outcomes = {metadata: "Metadata acquired", no_metadata: "Window ended without metadata", unobserved: "Insufficient continuous observation"};
-  definitions(history, [["Metadata", metadata.known ? "Available" : "Not acquired"],
-    ["Observed attempts", count(metadata.attempts)], ["Acquired / no metadata", `${count(metadata.successes)} / ${count(metadata.failures)}`],
-    ["Unconfirmed windows", count(metadata.unobserved)],
-    ["Current observation", metadata.active ? `Active · ${count(Math.round(metadata.active_seconds))} seconds observed` : "Not active"],
-    ["Last result", outcomes[metadata.last_outcome] || "No completed attempt recorded"],
-    ...(metadata.last_at ? [["Last result at", date(metadata.last_at, true)]] : []),
-    ...(metadata.trial_until > Date.now() / 1000 ? [["Trial ends", date(metadata.trial_until, true)]] : []),
-    ...(metadata.retry_at > Date.now() / 1000 ? [["Metadata retry", date(metadata.retry_at, true)]] : []),
-    ...(metadata.last_probe_at ? [["Last probe began", date(metadata.last_probe_at, true)]] : []),
-    ["Reported seeders / peers", `${count(ranking.signals.seeders)} / ${count(ranking.signals.known_peers)}`],
-  ]);
-  metadataSection.append(history, node("p", `Observed history since ${date(metadata.tracking_since, true)}. Earlier attempts are not reconstructed. Zero means no attempt observed during tracking.`, "muted"));
+  const panel = node("div", null, "metadata-panel"), counters = node("dl", null, "metadata-counters");
+  for (const [label, value] of [["Metadata", metadata.known ? "Available" : "Not acquired"],
+    ["Observed attempts", count(metadata.attempts)], ["Acquired", count(metadata.successes)],
+    ["No metadata", count(metadata.failures)], ["Unconfirmed windows", count(metadata.unobserved)]]) {
+    const cell = node("div");
+    cell.append(node("dt", label), node("dd", value));
+    counters.append(cell);
+  }
+  panel.append(metadataTimeline(ranking), counters,
+    node("p", `Observed history since ${date(metadata.tracking_since, true)}. Earlier attempts are not reconstructed. Zero means no attempt observed during tracking.`, "muted"));
+  metadataSection.append(panel);
   target.append(metadataSection);
 }
+$("detail-copy").addEventListener("click", async () => {
+  const hash = state.selectedTorrent?.hash;
+  if (!hash) return;
+  try {
+    await navigator.clipboard.writeText(hash);
+    $("detail-copy").textContent = "Copied";
+  } catch {
+    $("detail-copy").textContent = "Copy failed";
+  }
+});
 document.querySelectorAll("[data-action]").forEach((button) =>
   button.addEventListener("click", async () => {
     const hash = state.selectedTorrent?.hash;

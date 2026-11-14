@@ -465,31 +465,50 @@
         </div>
       </main>
     </div>
-    <dialog id="details-dialog">
-      <div class="dialog-heading">
-        <h2>Torrent details</h2>
-        <button
-          class="icon-button"
-          data-close="details-dialog"
-          aria-label="Close torrent details"
-        >
-          ×
-        </button>
+    <dialog id="details-dialog" aria-labelledby="detail-name">
+      <header class="detail-header">
+        <div class="detail-topline">
+          <span class="detail-eyebrow">Torrent details</span>
+          <span id="detail-state"></span>
+          <button
+            class="icon-button"
+            data-close="details-dialog"
+            aria-label="Close torrent details"
+          >
+            ×
+          </button>
+        </div>
+        <h2 id="detail-name"></h2>
+        <div class="detail-hash" id="detail-hash-row">
+          <code id="detail-hash"></code>
+          <button class="text-button" id="detail-copy" type="button">Copy hash</button>
+        </div>
+        <p id="detail-note" class="muted" hidden></p>
+      </header>
+      <div class="detail-body">
+        <ol id="detail-stages" class="detail-stages" aria-label="Download stage"></ol>
+        <div class="detail-progress">
+          <span class="detail-label">Progress</span>
+          <strong id="detail-percent"></strong>
+          <progress id="detail-progress" max="1" aria-label="Download progress"></progress>
+          <span id="detail-remaining" class="detail-remaining"></span>
+        </div>
+        <div id="detail-tiles" class="detail-tiles"></div>
+        <dl id="detail-values" class="detail-timers" hidden></dl>
+        <div id="detail-policy" class="inset" hidden></div>
+        <section id="detail-ranking" class="detail-ranking" aria-label="Ranking explanation"></section>
+        <section class="detail-activity"><h3>Recent activity</h3><div id="detail-actions"></div></section>
       </div>
-      <h3 id="detail-name"></h3>
-      <div id="detail-state"></div>
-      <dl id="detail-values" class="definition-grid"></dl>
-      <div id="detail-policy" class="inset" hidden></div>
-      <section id="detail-ranking" class="detail-ranking" aria-label="Ranking explanation"></section>
-      <section class="detail-activity"><h3>Recent activity</h3><div id="detail-actions"></div></section>
-      <p id="control-note" class="muted"></p>
-      <div class="button-row" id="torrent-actions">
-        <button class="button" data-action="prioritize">Move to top</button
-        ><button class="button" data-action="reannounce">Reannounce</button
-        ><button class="button" data-action="pause">Pause</button
-        ><button class="button" data-action="resume">Resume</button>
-      </div>
-      <p id="action-result" class="form-message" role="status"></p>
+      <footer class="detail-footer">
+        <p id="control-note" class="muted"></p>
+        <div class="button-row" id="torrent-actions">
+          <button class="button" data-action="prioritize">Move to top</button
+          ><button class="button" data-action="reannounce">Reannounce</button
+          ><button class="button" data-action="pause">Pause</button
+          ><button class="button" data-action="resume">Resume</button>
+        </div>
+        <p id="action-result" class="form-message" role="status"></p>
+      </footer>
     </dialog>
     <dialog id="user-dialog">
       <form id="user-form">
