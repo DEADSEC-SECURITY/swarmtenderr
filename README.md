@@ -43,7 +43,7 @@ docker run --rm --name swarmtenderr-demo \
   --cap-drop ALL --security-opt no-new-privileges:true \
   -e SWARMTENDERR_DEMO=true \
   -e SWARMTENDERR_PUBLIC_URL=http://localhost:8788 \
-  elgon2003/swarmtenderr:0.7.0
+  elgon2003/swarmtenderr:0.8.0
 ```
 
 Open <http://localhost:8788> and sign in with **demo / demo**. Inspect the queue,
@@ -56,6 +56,7 @@ and `SWARMTENDERR_PUBLIC_URL` to the same available port.
 
 - Always-visible ranking, discovery and capacity settings, with hours/minutes/seconds inputs.
 - Audited pause/resume, move to top, reannounce, force start and return to queue for operators and administrators.
+- Bounded **Fetch metadata now** attempts with cancellation, live results and an editable duration.
 - Local accounts and roles, plus Authentik-compatible OpenID Connect sign-in.
 - SQLite by default, optional PostgreSQL, Docker images for amd64/arm64 and a reusable Terraform module.
 
@@ -88,7 +89,7 @@ Terraform, shell arguments, source or image layers.
 
 ```sh
 export SWARMTENDERR_PASSWORD_PATH=/absolute/private/admin-password
-export SWARMTENDERR_IMAGE=elgon2003/swarmtenderr:0.7.0
+export SWARMTENDERR_IMAGE=elgon2003/swarmtenderr:0.8.0
 docker compose -f components/swarmtenderr/config/compose.yaml up -d
 ```
 
@@ -98,8 +99,8 @@ failed credentials never produce a successful connection result. Use a TLS rever
 proxy outside localhost and set `SWARMTENDERR_PUBLIC_URL` to the exact browser
 origin. Preserve WebSocket upgrades and the Origin header.
 
-For an immutable deployment, the accepted 0.7.0 image is
-`elgon2003/swarmtenderr@sha256:10b15fe8b55905a1b7eb0bdf22d0465a409df488987109ff34d3c9f309fdadab`.
+For an immutable deployment, the accepted 0.8.0 image is
+`elgon2003/swarmtenderr@sha256:7279696bab08eef4ce86286a666b8735ea585040292ed8b1f016e1129701a0ee`.
 
 Optional Compose overlays configure [a client secret file](components/swarmtenderr/config/compose.client-secret.yaml),
 [PostgreSQL](components/swarmtenderr/config/compose.postgres.yaml),
