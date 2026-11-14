@@ -15,6 +15,14 @@ controls, protection checks, enforce/observe restoration and completion accounti
 required. Fixable high/critical image vulnerabilities fail the job. Accepted OCI
 archives are retained as workflow artifacts for 14 days.
 
+The real-client suite also obtains metadata for a generated magnet from an
+isolated seed, checks temporary queue bypass and restoration of a previous stop,
+then verifies cancellation and durable timeout recovery. Both database suites
+exercise uncertain-response recovery, duplicate requests, client ownership and
+manual intent taking over. Metadata attempts use the existing versioned metadata
+store and require no destructive schema migration. Complete active attempts before
+rolling back to a release that does not monitor them.
+
 Run **Swarmtenderr verify and candidate** with `publish_candidate=true` to publish.
 The repository secret `DOCKERHUB_TOKEN` must hold an authorized publishing token for
 `elgon2003/swarmtenderr`; never put it in source, chat, issues, build arguments or

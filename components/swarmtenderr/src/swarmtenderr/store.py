@@ -251,13 +251,31 @@ class Store:
             self.set_meta(c, "activity_revision", self.meta("activity_revision", 0, c) + 1)
             self.execute(c, "UPDATE swarmtenderr_actions SET outcome=? WHERE id=?", (outcome, identity))
 
+    def metadata_requests(self):
+        return self.meta("metadata_requests_v1", {})
+
+    def save_metadata_request(self, request, *, create=False):
+        """Serialize each durable attempt without changing the database schema."""
+        with self.connection(serialize=True) as c:
+            requests = self.meta("metadata_requests_v1", {}, c)
+            previous = requests.get(request['torrent'])
+            if create and previous and previous.get('active'):
+                raise Conflict("A metadata attempt is already active for this torrent")
+            if not create and (not previous or previous['id'] != request['id']):
+                raise Conflict("The metadata attempt changed")
+            requests = {key: value for key, value in requests.items()
+                        if value.get('active') or value.get('finished_at', 0) > time.time() - 7 * 86400}
+            requests[request['torrent']] = request
+            self.set_meta(c, "metadata_requests_v1", requests)
+            self.set_meta(c, "activity_revision", self.meta("activity_revision", 0, c) + 1)
+
     def confirm_actions(self, rows):
         indexed = {row.get("hash"): row for row in rows}
         with self.connection() as c:
             actions = self.execute(c, "SELECT id, requested, torrent, action FROM swarmtenderr_actions WHERE outcome='accepted'").fetchall()
             for identity, requested, torrent, action in actions:
                 row = indexed.get(torrent)
-                if not row or action == "reannounce":
+                if not row or action in {"reannounce", "fetch_metadata", "cancel_metadata"}:
                     continue
                 stopped = row.get("state") in {"stoppedDL", "pausedDL", "stoppedUP", "pausedUP"}
                 forced = bool(row.get("force_start") or row.get("state") in {"forcedDL", "forcedUP"})

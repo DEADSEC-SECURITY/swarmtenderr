@@ -64,6 +64,7 @@ class Application:
                 "completion_revision": self.store.meta("completion_revision", 0),
                 "activity_revision": self.store.meta("activity_revision", 0),
                 "configuration_revision": config["revision"], "demo": self.settings.demo,
+                "metadata_fetch_seconds": config['metadata_fetch_seconds'],
                 "user": user, "timezone": config["timezone"], "poll_seconds": config["poll_seconds"]}
 
     def require(self, user, role):
@@ -232,22 +233,34 @@ class Application:
         return [data]
 
     def action(self, identity, payload, user):
+        self.require(user, "operator")
         if self.settings.demo:
             raise AuthError("Demo data cannot change a real torrent client", 403)
         action = payload.get("action")
-        if not isinstance(action, str) or action not in ACTIONS or set(payload) != {"action"}:
+        if not isinstance(action, str) or action not in {*ACTIONS, 'fetch_metadata', 'cancel_metadata'} or set(payload) != {"action"}:
             raise ValueError("Unsupported action")
         audit = self.store.begin_action(identity, action, user["username"])
         try:
-            self.client.action(identity, action, manual=True)
+            with self.observer.lock:
+                client = self.client
+                if action == 'fetch_metadata':
+                    self.observer.metadata.start(client, identity, audit, self.runtime.values()['metadata_fetch_seconds'])
+                elif action == 'cancel_metadata':
+                    self.observer.metadata.cancel(client, identity, audit)
+                else:
+                    self.observer.metadata.manual_override(identity, action, client)
+                    client.action(identity, action, manual=True)
         except ValueError as error:
-            self.store.finish_action(audit, "rejected")
+            request = self.store.metadata_requests().get(identity, {})
+            self.store.finish_action(audit, "uncertain" if request.get('active') and request.get('id') == audit else "rejected")
             return 409, {"error": str(error)}
         except UpstreamError:
             self.store.finish_action(audit, "uncertain")
             return 502, {"error": "Result uncertain. Inspect the torrent before retrying.", "id": audit}
-        self.store.finish_action(audit, "accepted")
-        self.observer.wake.set()
+        finally:
+            self.observer.wake.set()
+        if action != 'cancel_metadata' or self.store.metadata_requests().get(identity, {}).get('active'):
+            self.store.finish_action(audit, "accepted")
         return 202, {"id": audit, "outcome": "accepted", "message": "Request accepted; waiting for the next client observation"}
 
 

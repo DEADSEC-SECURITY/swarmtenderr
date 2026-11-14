@@ -1489,6 +1489,9 @@ dialog .muted {
 .detail-hash .text-button { padding-left: 0; }
 .detail-body { padding: 22px 26px 26px; overflow-y: auto; display: grid; gap: 22px; align-content: start; }
 .detail-body > * { margin: 0; min-width: 0; }
+.detail-metadata-request { display: grid; gap: 10px; }
+.detail-metadata-request h3, .detail-metadata-request p { margin: 0; }
+.detail-metadata-request .button { justify-self: start; }
 .detail-label { font-size: 12px; color: var(--muted); }
 .detail-stages { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .detail-stages li { --tone: var(--muted); --tone-bg: var(--panel-2); position: relative; padding: 30px 10px 0 0; display: grid; align-content: start; font-size: 13px; color: var(--faint); }

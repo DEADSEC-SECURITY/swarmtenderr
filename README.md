@@ -271,6 +271,31 @@ Settings uses always-visible Ranking, Discovery, Capacity and Metadata subsectio
 
 ## Manual torrent actions
 
+For a magnet without metadata, **Fetch metadata now** temporarily force-starts
+that torrent and reannounces once, independently of Observe/Enforce mode or
+automatic discovery cooldowns. The inspector shows the attempt, deadline and
+result, with **Cancel metadata attempt** while it is active. A reachable peer
+must still supply the metadata.
+
+Some peers disable metadata exchange for private torrents; the original tracker’s
+`.torrent` file may be required instead. See the upstream
+[libtorrent metadata-extension implementation](https://github.com/arvidn/libtorrent/blob/RC_2_0/src/ut_metadata.cpp#L584-L589).
+
+The temporary force start is released when metadata is observed or the attempt
+expires. A previously stopped torrent is stopped again. The default window is
+three minutes; change **Settings → General → Manual metadata attempt duration**
+using hours, minutes and seconds, or set Terraform's
+`defaults.metadata_fetch_seconds` (60–1800 seconds). Existing attempts keep their
+deadline. File payload can begin between metadata arrival and the next
+observation. If the app or client is unavailable, cleanup resumes after monitoring
+returns. Inspect any **Needs attention** result and explicitly retry cancellation
+when necessary; uncertain requests are not automatically replayed.
+
+Attempts survive application restarts. A later explicit pause, resume, force
+start or return-to-queue request takes over from the temporary attempt. Finish
+or cancel active attempts before switching client connections. Viewer accounts
+remain read-only; sign in as an operator or administrator to use these controls.
+
 Operators and administrators can pause, resume, move an unfinished download to the
 top, reannounce, force start, and return a forced torrent to the normal queue.
 Force start uses qBittorrent’s native queue bypass; force-started transfers remain
