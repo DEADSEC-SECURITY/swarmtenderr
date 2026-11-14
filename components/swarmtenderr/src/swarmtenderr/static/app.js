@@ -184,6 +184,7 @@ $("theme-toggle").addEventListener("click", () => {
   setTheme(theme);
   renderCompletionChart();
   renderTransferChart();
+  renderSparklines();
   try {
     localStorage.setItem("swarmtenderr-theme", theme);
   } catch {}
@@ -207,7 +208,7 @@ function showLogin(reason = "") {
   state.settingsTab = "general";
   document
     .querySelectorAll(
-      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #queue-bar, #attention, #waiting-rows, #history-totals, #activity-outcomes, #torrent-states, #detail-values, #detail-actions, #account-values",
+      ".view tbody, #settings-forms, #settings-tabs, #activity-list, #active-rows, #completion-chart, #transfer-chart, #completion-legend, #transfer-legend, #category-breakdown, #queue-summary, #queue-bar, #attention, #waiting-rows, #history-totals, #activity-outcomes, #torrent-states, #detail-values, #detail-actions, #detail-stages, #detail-tiles, #detail-ranking, #detail-state, #account-values",
     )
     .forEach((element) => element.replaceChildren());
   document
@@ -234,6 +235,10 @@ function showLogin(reason = "") {
     "coverage-note",
     "history-coverage",
     "detail-name",
+    "detail-hash",
+    "detail-note",
+    "detail-percent",
+    "detail-remaining",
     "detail-policy",
     "action-result",
     "history-page-label",
@@ -498,9 +503,7 @@ function render() {
       previousMonth.bytes == null
         ? "Completed wanted data"
         : `Last month ${bytes(previousMonth.bytes)}`;
-    sparkline($("spark-today"), stats.daily.slice(-14).map((d) => d.count), "Completions per day, last 14 days");
-    sparkline($("spark-month"), stats.monthly.map((d) => d.count), "Completions per month, last 12 months");
-    sparkline($("spark-payload"), stats.monthly.map((d) => d.bytes), "Payload per month, last 12 months");
+    renderSparklines();
     renderCategories(stats.categories);
     $("coverage-note").textContent = coverageText();
     $("history-coverage").textContent = coverageText();
@@ -548,15 +551,12 @@ function coverageText() {
     return "Completion collection starts with the first successful client observation.";
   return `Collection began ${date(coverage.since, true)}. Older surviving client records are included; previously removed torrents cannot be reconstructed. Timezone: ${zone()}.`;
 }
-function sparkline(target, values, label) {
-  const max = Math.max(1, ...values.map((value) => value || 0));
-  target.replaceChildren();
-  values.forEach((value, index) => {
-    const bar = node("span", null, index === values.length - 1 ? "current" : "");
-    bar.style.height = (value ? Math.max(8, (value / max) * 100) : 4) + "%";
-    target.append(bar);
-  });
-  target.setAttribute("aria-label", label);
+function renderSparklines() {
+  const stats = state.statistics;
+  if (!stats) return;
+  dashboardCharts.sparkline($("spark-today"), stats.daily.slice(-14), "daily", "count");
+  dashboardCharts.sparkline($("spark-month"), stats.monthly, "monthly", "count");
+  dashboardCharts.sparkline($("spark-payload"), stats.monthly, "monthly", "bytes");
 }
 const stateLabels = {
   downloading: "Downloading", metadata: "Metadata", queued: "Queued", stalled: "Stalled",
@@ -1490,7 +1490,7 @@ const actionIcons = { prioritize: "top", reannounce: "refresh", pause: "pause", 
 const outcomeNotes = {
   accepted: "Accepted; waiting for the next client observation",
   confirmed: "Confirmed by a client observation",
-  uncertain: "No matching change was observed within two minutes",
+  uncertain: "The result could not be confirmed; inspect the torrent before retrying",
   rejected: "The request was refused",
 };
 function renderActivity() {

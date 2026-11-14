@@ -1705,9 +1705,8 @@ progress[class^="state-"]::-moz-progress-bar { background: var(--state); }
 .metric > div > small { font-size: 12px; color: var(--muted); }
 .metric.highlight { background: var(--accent-bg); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .metric.highlight span, .metric.highlight small { color: var(--text); }
-.sparkline { display: flex; align-items: flex-end; gap: 3px; height: 40px; flex: none; }
-.sparkline span { width: 5px; min-height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--accent) 45%, var(--panel)); }
-.sparkline span.current { background: var(--accent); }
+.sparkline { width: 90px; height: 40px; flex: none; position: relative; }
+.sparkline:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 .chart-grid { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
 .completion-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px 20px; }
 .completion-body:has(.category-panel:not([hidden])) { grid-template-columns: minmax(0, 3fr) minmax(180px, 2fr); }
@@ -1804,8 +1803,9 @@ td { font-size: 13px; }
 .field-source { display: inline-block; margin-top: 8px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); }
 .settings-field .input-with-unit { max-width: 220px; }
 .settings-field input[type="number"]:not(.duration-control input) { max-width: 220px; }
-.settings-subsections { grid-template-columns: minmax(0, 1fr); gap: 0; }
-.tuning-group { padding: 0; border: 0; border-radius: 0; }
+.settings-subsections { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 0 24px 24px; }
+.tuning-group { padding: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.settings-form .tuning-fields .settings-field { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 18px; }
 .tuning-group > h3 { padding: 12px 24px; font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--panel-2); border-top: 1px solid var(--line); }
 .settings-form .settings-actions { margin: 0; padding: 14px 24px; border-top: 1px solid var(--line); background: var(--panel-2); border-radius: 0 0 9px 9px; }
 @media (max-width: 900px) {
@@ -1814,4 +1814,7 @@ td { font-size: 13px; }
 .view > * { min-width: 0; }
 @media (max-width: 900px) {
   .settings-actions, .settings-tabs { position: static; }
+}
+@media (max-width: 1100px) {
+  .settings-subsections { grid-template-columns: minmax(0, 1fr); }
 }

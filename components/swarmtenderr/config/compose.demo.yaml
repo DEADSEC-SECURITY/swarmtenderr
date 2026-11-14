@@ -1,7 +1,7 @@
 name: swarmtenderr-demo
 services:
   swarmtenderr:
-    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.6.0}
+    image: ${SWARMTENDERR_IMAGE:-elgon2003/swarmtenderr:0.7.0}
     environment:
       SWARMTENDERR_DEMO: "true"
       SWARMTENDERR_PUBLIC_URL: ${SWARMTENDERR_PUBLIC_URL:-http://localhost:8787}
