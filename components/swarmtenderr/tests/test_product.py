@@ -97,7 +97,7 @@ class ProductTests(unittest.TestCase):
         self.add_user('operator')
         self.token = self.app.auth.login('operator', 'test-only-account-password', 'fixture')
         self.csrf = self.app.auth.csrf(self.token)
-        path = f'/api/v1/torrents/{metadata_hash}/actions'
+        path = f'/api/v1/torrents/{metadata_hash.upper()}/actions'
         with patch.object(self.app.observer, 'get_client', return_value=client):
             self.assertEqual(self.request(path, 'POST', {'action':'fetch_metadata'}, HTTP_X_CSRF_TOKEN='bad')[0], 403)
             self.assertEqual(client.calls, [])
@@ -126,6 +126,29 @@ class ProductTests(unittest.TestCase):
         for value in (0, 59, 1801, True):
             with self.assertRaises(ValueError):
                 self.app.runtime.save({'metadata_fetch_seconds':value}, 2, 'fixture')
+
+    def test_original_client_can_be_reconnected_to_recover_metadata_attempt(self):
+        from dataclasses import replace
+        from test_metadata import Client, HASH as metadata_hash
+        client = Client()
+        client.url = self.settings.qbit_url
+        path = f'/api/v1/torrents/{metadata_hash}/actions'
+        with patch.object(self.app.observer, 'get_client', return_value=client):
+            self.assertEqual(self.request(path, 'POST', {'action':'fetch_metadata'})[0], 202)
+        self.app.store.controller_lease(self.app.observer.controller.owner, release=True)
+        self.app = create_app(replace(self.settings, qbit_url='http://different:8080'), False)
+        different = Client()
+        different.url = 'http://different:8080'
+        self.app.observer.metadata.poll(different, different.rows())
+        self.assertEqual(different.calls, [])
+        self.assertEqual(self.app.store.metadata_requests()[metadata_hash]['phase'], 'attention')
+        code, result, _ = self.request('/api/v1/settings', 'PATCH', {'revision':0, 'changes':{'qbit_url':self.settings.qbit_url}})
+        self.assertEqual(code, 200, result)
+        with patch.object(self.app.observer, 'get_client', return_value=client):
+            self.assertEqual(self.request(path, 'POST', {'action':'cancel_metadata'})[0], 202)
+            self.app.observer.metadata.poll(client, client.rows())
+        self.assertFalse(client.row['force_start'])
+        self.assertFalse(self.app.store.metadata_requests()[metadata_hash]['active'])
 
     def test_password_change_checks_current_and_revokes_existing_sessions(self):
         self.assertEqual(self.request("/api/v1/account/password", "POST",

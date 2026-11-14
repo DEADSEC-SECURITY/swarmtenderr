@@ -18,7 +18,11 @@ def has_metadata(row):
 
 
 def binding(client):
-    return hashlib.sha256((client.url.rstrip('/') + '\n' + client.username).encode()).hexdigest()
+    return connection_binding(client.url, client.username)
+
+
+def connection_binding(url, username):
+    return hashlib.sha256((url.rstrip('/') + '\n' + username).encode()).hexdigest()
 
 
 class MetadataRequests:
@@ -43,6 +47,7 @@ class MetadataRequests:
             self.store.finish_action(record['cancel_id'], 'confirmed')
 
     def start(self, client, identity, audit, duration):
+        identity = identity.lower()
         self.claim()
         if self.store.metadata_requests().get(identity, {}).get('active'):
             raise Conflict("A metadata attempt is already active for this torrent")
@@ -112,6 +117,7 @@ class MetadataRequests:
             raise
 
     def cancel(self, client, identity, audit):
+        identity = identity.lower()
         self.claim()
         record = self.store.metadata_requests().get(identity)
         if not record or not record.get('active'):
@@ -139,6 +145,7 @@ class MetadataRequests:
         self.release(client, record, 'cancelled')
 
     def manual_override(self, identity, action, client=None):
+        identity = identity.lower()
         if action not in {'pause', 'resume', 'force_start', 'unforce'}:
             return
         record = self.store.metadata_requests().get(identity)
@@ -170,7 +177,7 @@ class MetadataRequests:
         records = [record for record in self.store.metadata_requests().values() if record.get('active')]
         if not records or not self.store.controller_lease(self.owner):
             return False
-        indexed, changed = {row['hash']: row for row in rows}, False
+        indexed, changed = {row['hash'].lower(): row for row in rows}, False
         for record in records:
             if record['client'] != binding(client):
                 if not record.get('connection_changed'):

@@ -131,9 +131,12 @@ class Runtime:
         for key in reset:
             candidate[key] = (read_secret(self.settings.qbit_password_file) if key == "qbit_password" else
                               read_secret(self.settings.oidc_secret_file) if key == "sso_client_secret" else self.defaults[key])
-        if any(candidate[key] != current[key] for key in ('qbit_url', 'qbit_username')) and any(
-                request.get('active') for request in self.store.metadata_requests().values()):
-            raise ValueError("Finish or cancel active metadata attempts before changing the qBittorrent connection")
+        if any(candidate[key] != current[key] for key in ('qbit_url', 'qbit_username')):
+            from .metadata import connection_binding
+            target = connection_binding(candidate['qbit_url'], candidate['qbit_username'])
+            if any(request.get('active') and request['client'] != target
+                   for request in self.store.metadata_requests().values()):
+                raise ValueError("Finish or cancel active metadata attempts before switching clients. Reconnecting to their original client is allowed.")
         Policy.from_values(candidate)
         if candidate["sso_enabled"] and not all(candidate[key] for key in ("sso_issuer", "sso_client_id", "sso_client_secret")):
             raise ValueError("SSO requires an issuer, client ID and client secret")

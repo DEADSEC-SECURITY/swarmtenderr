@@ -234,6 +234,7 @@ class Application:
 
     def action(self, identity, payload, user):
         self.require(user, "operator")
+        identity = identity.lower()
         if self.settings.demo:
             raise AuthError("Demo data cannot change a real torrent client", 403)
         action = payload.get("action")

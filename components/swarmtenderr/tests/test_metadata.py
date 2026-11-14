@@ -97,6 +97,16 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(self.record()['phase'], 'timed_out')
         self.assertFalse(has_metadata(self.client.row))
 
+    def test_case_insensitive_hash_has_one_canonical_durable_attempt(self):
+        audit = self.store.begin_action(HASH, 'fetch_metadata', 'operator')
+        self.manager.start(self.client, HASH.upper(), audit, 180)
+        self.assertEqual(set(self.store.metadata_requests()), {HASH})
+        self.client.row.update(size=4096)
+        self.poll()
+        self.poll()
+        self.assertEqual(self.record()['phase'], 'acquired')
+        self.assertFalse(self.client.row['force_start'])
+
     def test_native_metadata_stop_condition_can_already_release_force(self):
         self.start()
         self.client.row.update(size=4096, total_size=4096, force_start=False, state='stoppedDL')
