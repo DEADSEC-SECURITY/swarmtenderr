@@ -146,6 +146,71 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(estimate['eta_seconds'], 2048)
         self.assertIn('speed', estimate['source'].lower())
 
+    def test_partial_metadata_history_is_initialized_and_preserved(self):
+        now = 1000
+        magnet = row(1, 'metaDL', amount_left=0, size=0, completed=0)
+        identity = magnet['hash']
+        counters = {'attempts': 1, 'successes': 0}
+        history = {identity: {'metadata_observation': counters, 'metadata_trial_at': 970,
+                              'metadata_trial_until': 1150, 'metadata_trial_running': True}}
+
+        admission.observe({identity: magnet}, history, now)
+
+        self.assertEqual(history[identity]['observed_at'], now)
+        self.assertEqual(history[identity]['last_progress_at'], now)
+        self.assertEqual(history[identity]['rate_samples'], [])
+        self.assertEqual(history[identity]['metadata_observation'], counters)
+        self.assertEqual(history[identity].get('metadata_trial_active_seconds', 0), 0)
+        self.assertEqual(history[identity]['metadata_trial_until'], 1150)
+
+    def test_second_metadata_trial_rotates_and_respects_both_disk_budgets(self):
+        now = 1000
+        winner = row(1, 'downloading', dlspeed=1024**2)
+        magnets = [row(i, amount_left=0, size=0, completed=0, num_seeds=0, num_complete=seeds)
+                   for i, seeds in ((2, 328), (3, 326), (4, 166))]
+        rows = {item['hash']: item for item in [winner, *magnets]}
+        first, second, third = (item['hash'] for item in magnets)
+        history = {}
+        admission.observe(rows, history, now)
+        proposed = admission.queue_plan(rows, rows, history, now, max_downloads=4)
+        self.assertEqual(proposed['metadata_trials'], [first, second])
+        self.assertIn(winner['hash'], proposed['front'])
+        self.assertEqual(admission.queue_plan(rows, rows, history, now, max_downloads=3)['metadata_trials'], [first])
+
+        for ssd, library, reason in ((58, 1000, 'Waiting for SSD completion space'),
+                                     (100, 53, 'Waiting for library import space')):
+            capacity = space_planner.plan(rows, rows, history, 4, proposed, ssd*GIB, GIB,
+                                          library*GIB, 500*GIB, now)
+            self.assertEqual(capacity['metadata_trials'], 1)
+            self.assertEqual(capacity['deferred'][second], reason)
+            admitted = {**proposed, 'front': capacity['selected']}
+            partial_history = copy.deepcopy(history)
+            admission.commit_plan(admitted, rows, partial_history, now)
+            self.assertNotIn('metadata_trial_until', partial_history[second])
+
+        capacity = space_planner.plan(rows, rows, history, 4, proposed, 100*GIB, GIB,
+                                      1000*GIB, 500*GIB, now)
+        self.assertEqual(capacity['metadata_trials'], 2)
+        self.assertGreater(capacity['ssd_reserved_bytes'], 4*GIB)
+        self.assertGreater(capacity['library_reserved_bytes'], 4*GIB)
+        admission.commit_plan(proposed, rows, history, now)
+        first_deadline = history[first]['metadata_trial_until']
+        second_deadline = history[second]['metadata_trial_until']
+        rows[third]['num_complete'] = 1000
+        current = admission.queue_plan(rows, rows, history, now+30, max_downloads=4)
+        self.assertEqual(current['metadata_trials'], [first, second])
+        admission.commit_plan(current, rows, history, now+30)
+        self.assertEqual(history[first]['metadata_trial_until'], first_deadline)
+        self.assertEqual(history[second]['metadata_trial_until'], second_deadline)
+
+        rows[first].update(state='stalledDL', amount_left=8*GIB)
+        admission.observe(rows, history, now+60)
+        current = admission.queue_plan(rows, rows, history, now+60, max_downloads=4)
+        self.assertEqual(history[first]['metadata_trial_result']['outcome'], 'metadata')
+        self.assertEqual(current['metadata_trials'], [second, third])
+        self.assertTrue(admission.ranking_ready(
+            {'queue_front': proposed['front'], 'queue_ranked_at': now}, current, now+60))
+
     def test_library_reserve_and_external_jobs_are_charged_first(self):
         rows = {item['hash']: item for item in [row(1), row(2, 'downloading', category='manual', amount_left=100*GIB)]}
         owned = {row(1)['hash']: {}}
