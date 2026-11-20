@@ -78,13 +78,16 @@ def plan(rows, owned, history, requested, proposed, available, used, library_ava
     # native slot. Both still consume the disk reservation above.
     external_slots=sum(r.get('state')!='forcedDL' and not r.get('force_start') for r in external)
     slots=max(0,requested-external_slots)
+    metadata_ids = proposed.get('metadata_trials')
+    discovery_limit = admission.metadata_slot_limit(slots) if metadata_ids is not None else 1
     for identity in ordered:
         if identity not in eligible:continue
         row=eligible[identity];cost=requirements(row, policy=policy)
         # Never turn repair/discovery cooldowns into ordinary admission.
         if identity not in proposed.get('eligible',eligible):continue
         repair=identity==proposed.get('metadata_repair')
-        if cost['unknown'] and not repair and discovery_unknown:
+        if cost['unknown'] and not repair and (
+                discovery_unknown >= discovery_limit or metadata_ids is not None and identity not in metadata_ids):
             deferred[identity]='Waiting for metadata slot';continue
         if ssd+cost['ssd']>budget:
             deferred[identity]='Waiting for SSD completion space';continue
